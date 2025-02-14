@@ -80,13 +80,14 @@ vllm_image = (
 def run():
 
     # the model training is packaged as a script, so we have to execute it as a subprocess, which adds some boilerplate
-    def _exec_subprocess(cmd: list[str], cwd: str = None):
+    def _exec_subprocess(cmd: list[str], cwd: str = None, env: dict = None):
         """Executes subprocess and prints log to terminal while subprocess is running."""
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=cwd,  # Change to the working directory
+            env={**os.environ, **(env or {})},  # Merge with existing environment
         )
         with process.stdout as pipe:
             for line in iter(pipe.readline, b""):
@@ -109,4 +110,5 @@ def run():
             "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
         ],
         cwd="/open-r1",
+        env={"ACCELERATE_LOG_LEVEL": "info"},
     )

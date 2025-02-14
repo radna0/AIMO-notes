@@ -24,7 +24,7 @@ MODEL_NAME = "radna/OpenR1-Qwen-7B"
 # MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
 
 
-EVAL_FILE = "batch_13"
+EVAL_FILE = "aime_2025_II"
 
 
 def hf_download():
