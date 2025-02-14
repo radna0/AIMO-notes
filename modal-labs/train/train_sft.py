@@ -109,7 +109,7 @@ def run():
             "src/open_r1/sft.py",
             # "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
             "--model_name_or_path=open-r1/OpenR1-Qwen-7B",
-            "--dataset_name=bespokelabs/Bespoke-Stratos-17k",
+            "--dataset_name=HuggingFaceH4/Bespoke-Stratos-17k",
             "--learning_rate=2.0e-5",
             "--num_train_epochs=1",
             "--packing",
