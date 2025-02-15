@@ -104,9 +104,11 @@ def run():
     print("Running accelerate training script...")
 
     # Move into the correct directory and execute the command
-    _exec_subprocess(
-        ["git", "clone", "https://github.com/radna0/open-r1.git"], cwd="/model"
-    )
+    # check if the directory exists
+    if not os.path.exists("/model/open-r1"):
+        _exec_subprocess(
+            ["git", "clone", "https://github.com/radna0/open-r1.git"], cwd="/model"
+        )
     _exec_subprocess(["git", "pull"], cwd="/model/open-r1")
     _exec_subprocess(["ls"], cwd="/model/open-r1")
     _exec_subprocess(
@@ -121,7 +123,7 @@ def run():
             "--learning_rate=2.0e-5",
             "--num_train_epochs=1",
             "--packing",
-            "--max_seq_length=1024",
+            "--max_seq_length=512",
             "--auto_find_batch_size",
             "--gradient_accumulation_steps=1",
             "--gradient_checkpointing",
