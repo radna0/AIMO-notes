@@ -27,7 +27,7 @@ HF_TOKEN = "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"
 
 # take in args
 
-EVAL_FILE = "batch_16"
+EVAL_FILE = "batch_17"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
@@ -38,10 +38,14 @@ def hf_download():
         MODEL_NAME,
         cache_dir="/cache",
         token=HF_TOKEN,
+        force_download=True,
     )
 
 
-vol = modal.Volume.from_name("hf-hub-cache", create_if_missing=True)
+vol = modal.Volume.from_name(
+    "hf-hub-cache",
+    create_if_missing=True,
+)
 
 
 vllm_image = (
