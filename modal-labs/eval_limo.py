@@ -18,13 +18,17 @@ HOURS = 60 * MINUTES
 # MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
 
 # NON-AWQ BUT Still Very Fast
-MODEL_NAME = "radna/OpenR1-Qwen-7B"
+MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
+HF_TOKEN = "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"
+
 
 # VERY SLOW
 # MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
 
+# take in args
 
-EVAL_FILE = "aime_2025_II"
+EVAL_FILE = "batch_16"
+print(f"Using evaluation file: {EVAL_FILE}")
 
 
 def hf_download():
@@ -33,6 +37,7 @@ def hf_download():
     deepseek_model = snapshot_download(
         MODEL_NAME,
         cache_dir="/cache",
+        token=HF_TOKEN,
     )
 
 
@@ -129,7 +134,7 @@ def eval():
     MAX_NUM_SEQS = 32
     MAX_MODEL_LEN = 1024 * 16
 
-    FINAL_EVAL_NAME = f"7B_NAWQ_OpenR1_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
+    FINAL_EVAL_NAME = f"7B_AWQ_OpenR1_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
 
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
@@ -143,7 +148,7 @@ def eval():
         tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
         gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
         seed=2024,
-        # quantization="moe_wna16",
+        quantization="moe_wna16",
     )
 
     import vllm
