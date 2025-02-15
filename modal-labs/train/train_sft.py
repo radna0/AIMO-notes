@@ -124,7 +124,7 @@ def run():
             "--num_train_epochs=1",
             "--packing",
             "--max_seq_length=512",
-            "--auto_find_batch_size",
+            "--per_device_train_batch_size=2",
             "--gradient_accumulation_steps=1",
             "--gradient_checkpointing",
             "--bf16",
