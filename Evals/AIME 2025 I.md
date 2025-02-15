@@ -1,4 +1,4 @@
-# DEFAULT MIXED PROMPT
+# DEFAULT 2 English + 1 Chinese PROMPT
 ```
 # AWQ DeepSeek-R1-Distill-Qwen-14B
 ############################################## BEST??

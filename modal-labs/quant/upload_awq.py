@@ -3,7 +3,7 @@ import modal
 import subprocess
 
 
-app = modal.App("open-r1-sft-training-script")
+app = modal.App("open-r1-awq-quantization-script")
 
 cuda_version = "12.4.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
@@ -17,6 +17,7 @@ MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 
 MODEL_NAME = "open-r1/OpenR1-Qwen-7B"
+HF_TOKEN = "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"
 
 EVAL_FILE = "batch_13"
 
@@ -27,6 +28,7 @@ def hf_download():
     deepseek_model = snapshot_download(
         MODEL_NAME,
         cache_dir="/cache",
+        token=HF_TOKEN,
     )
 
 
@@ -52,24 +54,14 @@ vllm_image = (
         # persist the HF cache to a Modal Volume so future runs don't re-download models
         volumes={"/cache": vol},
     )
-    .pip_install("wandb", "accelerate", "deepspeed", "datasets")
-    .apt_install("git-lfs")
+    .pip_install("autoawq")
     .run_commands(
-        "git clone https://github.com/radna0/open-r1.git",
-        'cd open-r1 && GIT_LFS_SKIP_SMUDGE=1 pip install -e ".[dev]"',
-        "huggingface-cli login --token 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",
-        "wandb login e2ed6858c3226f51a97cdffcb81282ee2164bcec",
-    )
-    .run_commands(
-        "nvcc --version",
-        'python -c "import torch; print(torch.__version__)"',
-        "git-lfs --version",
-        # "cd open-r1 && git pull",
-        # "cd open-r1 && ls",
+        "pip install autoawq[kernels]",
+        f"huggingface-cli login --token {HF_TOKEN}",
     )
 )
 
-vol = modal.Volume.from_name("sft-models", create_if_missing=True)
+vol = modal.Volume.from_name("awq-models", create_if_missing=True)
 
 
 @app.function(
@@ -82,6 +74,12 @@ vol = modal.Volume.from_name("sft-models", create_if_missing=True)
 )
 def run():
     vol.reload()
+
+    from awq import AutoAWQForCausalLM
+    from transformers import AutoTokenizer
+
+    model_path = MODEL_NAME
+    quant_path = "/model/openr1-qwen-7B-AWQ"
 
     # the model training is packaged as a script, so we have to execute it as a subprocess, which adds some boilerplate
     def _exec_subprocess(cmd: list[str], cwd: str = None, env: dict = None):
@@ -101,35 +99,11 @@ def run():
         if exitcode := process.wait() != 0:
             raise subprocess.CalledProcessError(exitcode, "\n".join(cmd))
 
-    print("Running accelerate training script...")
+    print("Running hf model upload script...")
 
     # Move into the correct directory and execute the command
+    _exec_subprocess(["ls"], cwd=quant_path)
     _exec_subprocess(
-        ["git", "clone", "https://github.com/radna0/open-r1.git"], cwd="/model"
+        ["huggingface-cli", "upload", "radna/OpenR1-Qwen-7B-AWQ", ".", "--private"],
+        cwd=quant_path,
     )
-    _exec_subprocess(["git", "pull"], cwd="/model/open-r1")
-    _exec_subprocess(["ls"], cwd="/model/open-r1")
-    _exec_subprocess(
-        [
-            "accelerate",
-            "launch",
-            "--config_file=recipes/accelerate_configs/ddp.yaml",
-            "src/open_r1/sft.py",
-            # "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
-            "--model_name_or_path=open-r1/OpenR1-Qwen-7B",
-            "--dataset_name=HuggingFaceH4/Bespoke-Stratos-17k",
-            "--learning_rate=2.0e-5",
-            "--num_train_epochs=1",
-            "--packing",
-            "--max_seq_length=1024",
-            "--auto_find_batch_size",
-            "--gradient_accumulation_steps=1",
-            "--gradient_checkpointing",
-            "--bf16",
-            "--output_dir=data/OpenR1-Qwen-7B-Distill",
-        ],
-        cwd="/model/open-r1",
-        env={"ACCELERATE_LOG_LEVEL": "info"},
-    )
-
-    vol.commit()
