@@ -11,12 +11,13 @@ operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 
-N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
+N_GPU = 4  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
 
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 
 MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+CHECK_POINT = "checkpoint-75000"
 
 
 def hf_download():
@@ -118,7 +119,7 @@ def run():
             "cp",
             "-r",
             "model/checkpoints",
-            "open-r1/data/DeepSeek-Qwen-7B-Distill/checkpoint-75000",
+            f"open-r1/data/DeepSeek-Qwen-7B-Distill/{CHECK_POINT}",
         ],
         cwd="/model",
     )
@@ -127,20 +128,22 @@ def run():
         [
             "accelerate",
             "launch",
-            "--config_file=recipes/accelerate_configs/ddp.yaml",
+            "--config_file=recipes/accelerate_configs/zero3.yaml",
             "src/open_r1/sft.py",
-            "--resume_from_checkpoint=data/DeepSeek-Qwen-7B-Distill/checkpoint-75000",
+            f"--resume_from_checkpoint=data/DeepSeek-Qwen-7B-Distill/{CHECK_POINT}",
             # "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
             f"--model_name_or_path={MODEL_NAME}",
             "--dataset_name=HuggingFaceH4/Bespoke-Stratos-17k",
-            "--learning_rate=2.0e-5",
-            "--num_train_epochs=1",
+            "--learning_rate=5.0e-5",
+            "--num_train_epochs=3",
             "--packing",
             "--save_steps=5000",
-            "--eval_steps 1000",
-            "--max_seq_length=512",
+            "--eval_steps=1000",
+            "--max_seq_length=4096",
+            "--warmup_ratio=0.1",
+            "--lr_scheduler_type=linear",
             "--per_device_train_batch_size=1",
-            "--gradient_accumulation_steps=1",
+            "--gradient_accumulation_steps=8",
             "--gradient_checkpointing",
             "--bf16",
             "--torch_dtype=bfloat16",

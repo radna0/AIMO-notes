@@ -18,7 +18,8 @@ HOURS = 60 * MINUTES
 # MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
 
 # NON-AWQ BUT Still Very Fast
-MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
+# MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
+MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-7b-awq"
 HF_TOKEN = "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"
 
 
@@ -27,7 +28,7 @@ HF_TOKEN = "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"
 
 # take in args
 
-EVAL_FILE = "batch_17"
+EVAL_FILE = "batch_12"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
@@ -138,7 +139,7 @@ def eval():
     MAX_NUM_SEQS = 32
     MAX_MODEL_LEN = 1024 * 16
 
-    FINAL_EVAL_NAME = f"7B_AWQ_OpenR1_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
+    FINAL_EVAL_NAME = f"7B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
 
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
@@ -276,7 +277,7 @@ def eval():
             [
                 {
                     "role": "system",
-                    "content": 'Please carefully read the problem statement first to ensure you fully understand its meaning and key points. Then, solve the problem correctly and completely through deep reasoning. Finally, return the result modulo 1000 and enclose it in \\boxed{} like "Atfer take the result modulo 1000, final anwer is \\boxed{180}.',
+                    "content": "Please carefully read the problem statement first to ensure you fully understand its meaning and key points. Then, solve the problem correctly and completely through deep reasoning. Finally, return the result modulo 1000 and enclose it in \\boxed{}.",
                 },
                 {"role": "user", "content": question},
             ],

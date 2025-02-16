@@ -11,12 +11,13 @@ operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 
-N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
+N_GPU = 2  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
 
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 
 MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+CHECK_POINT = "checkpoint-75000"
 
 
 def hf_download():
@@ -101,6 +102,29 @@ def run():
 
     print("Running accelerate training script...")
 
+    cmd = [
+        "accelerate",
+        "launch",
+        "--config_file=recipes/accelerate_configs/zero3.yaml",
+        "src/open_r1/sft.py",
+        # "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
+        f"--model_name_or_path={MODEL_NAME}",
+        "--dataset_name=HuggingFaceH4/Bespoke-Stratos-17k",
+        "--learning_rate=5.0e-5",
+        "--num_train_epochs=3",
+        "--packing",
+        "--save_steps=5000",
+        "--eval_steps=1000",
+        "--max_seq_length=4096",
+        "--warmup_ratio=0.1",
+        "--lr_scheduler_type=linear",
+        "--per_device_train_batch_size=1",
+        "--gradient_accumulation_steps=8",
+        "--gradient_checkpointing",
+        "--bf16",
+        "--torch_dtype=bfloat16",
+        "--output_dir=data/DeepSeek-Qwen-7B-Distill",
+    ]
     # Move into the correct directory and execute the command
     # check if the directory exists
     if not os.path.exists("/model/open-r1"):
@@ -113,39 +137,23 @@ def run():
         ["mkdir", "-p", "open-r1/data/DeepSeek-Qwen-7B-Distill"],
         cwd="/model",
     )
-    _exec_subprocess(
-        [
-            "cp",
-            "-r",
-            "model/checkpoints",
-            "open-r1/data/DeepSeek-Qwen-7B-Distill/checkpoint-75000",
-        ],
-        cwd="/model",
-    )
+    if os.path.exists("/model/open-r1/model/checkpoints"):
+        _exec_subprocess(
+            [
+                "cp",
+                "-r",
+                "model/checkpoints",
+                "open-r1/data/DeepSeek-Qwen-7B-Distill/{CHECK_POINT}",
+            ],
+            cwd="/model",
+        )
+        cmd.append(
+            f"--resume_from_checkpoint=data/DeepSeek-Qwen-7B-Distill/{CHECK_POINT}"
+        )
     _exec_subprocess(["ls"], cwd="/model/open-r1")
+
     _exec_subprocess(
-        [
-            "accelerate",
-            "launch",
-            "--config_file=recipes/accelerate_configs/ddp.yaml",
-            "src/open_r1/sft.py",
-            "--resume_from_checkpoint=data/DeepSeek-Qwen-7B-Distill/checkpoint-75000",
-            # "--config=recipes/Open-R1-Qwen-7B/sft/config_demo.yaml",
-            f"--model_name_or_path={MODEL_NAME}",
-            "--dataset_name=HuggingFaceH4/Bespoke-Stratos-17k",
-            "--learning_rate=2.0e-5",
-            "--num_train_epochs=1",
-            "--packing",
-            "--save_steps=5000",
-            "--eval_steps 1000",
-            "--max_seq_length=512",
-            "--per_device_train_batch_size=1",
-            "--gradient_accumulation_steps=1",
-            "--gradient_checkpointing",
-            "--bf16",
-            "--torch_dtype=bfloat16",
-            "--output_dir=data/DeepSeek-Qwen-7B-Distill",
-        ],
+        cmd,
         cwd="/model/open-r1",
         env={"ACCELERATE_LOG_LEVEL": "info"},
     )
