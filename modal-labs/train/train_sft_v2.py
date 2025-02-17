@@ -116,7 +116,7 @@ def run():
         "--save_steps=5000",
         "--eval_steps=1000",
         "--max_seq_length=4096",
-        "--warmup_ratio=0.1",
+        "--warmup_ratio=0.003",
         "--lr_scheduler_type=linear",
         "--per_device_train_batch_size=1",
         "--gradient_accumulation_steps=8",

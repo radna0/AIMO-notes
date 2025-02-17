@@ -28,7 +28,7 @@ HF_TOKEN = "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"
 
 # take in args
 
-EVAL_FILE = "batch_12"
+EVAL_FILE = "batch_6"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
