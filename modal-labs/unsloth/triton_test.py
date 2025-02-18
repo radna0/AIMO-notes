@@ -23,13 +23,22 @@ vol = modal.Volume.from_name("hf-hub-cache", create_if_missing=True)
 vllm_image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
     .apt_install("git", "build-essential", "cmake", "curl", "libcurl4-openssl-dev")
+    .pip_install(
+        "torch",
+        "transformers",
+        "pandas",
+        "numpy",
+        "huggingface_hub[hf_transfer]",
+    )
     .run_commands(
-        "pip install --no-deps bitsandbytes accelerate xformers==0.0.29 peft trl triton",
+        "pip install --no-deps bitsandbytes accelerate xformers peft trl triton",
         "pip install --no-deps cut_cross_entropy unsloth_zoo",
         "pip install sentencepiece protobuf datasets huggingface_hub hf_transfer",
         "pip install --no-deps unsloth",
+        'python -c "import triton; print(triton.__version__)"',
     )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "0"})
+    .pip_install("psutil", "Pillow", "rich")
+    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )
 
 vol = modal.Volume.from_name("sft-models", create_if_missing=True)
@@ -158,8 +167,33 @@ def run():
     def unsloth_dequantize(weight):
         return fast_dequantize(weight.weight, weight.weight.quant_state)
 
-    test_dequantize(unsloth_dequantize)
-
+    print(f"Time taken: {test_dequantize(unsloth_dequantize)}")
     from peft.utils.integrations import dequantize_module_weight as peft_dequantize
 
-    test_dequantize(peft_dequantize)
+    print(f"Time taken: {test_dequantize(peft_dequantize)}")
+
+    import torch, triton, triton.language as tl
+
+    from triton import jit
+    import triton
+    import triton.language as tl
+
+    @triton.jit
+    def _your_dequantize_nf4_kernel():
+        ### TRITON CODE GOES HERE
+        return
+
+    def _your_dequantize_nf4(weight, quant_state):
+        ### SETUP TRITON LAUNCH HERE
+        return None
+
+    def your_dequantize_nf4(weight):
+        return _your_dequantize_nf4(weight.weight.data, weight.weight.quant_state)
+
+    ### TEST IT BELOW:
+    print(f"Time taken: {test_dequantize(your_dequantize_nf4)}")
+
+    ### CALCULATE SPEEDUP (hopefully 1.15x faster or more)
+    print(
+        f"Time taken: {test_dequantize(unsloth_dequantize) / test_dequantize(your_dequantize_nf4)}"
+    )

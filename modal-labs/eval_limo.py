@@ -2,8 +2,11 @@ import os
 import modal
 import subprocess
 
+import random
 
-app = modal.App("limo-eval-vllm-notebook")
+id = random.randint(0, 1000000)
+
+app = modal.App(f"eval-{id}-notebook")
 
 
 N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
@@ -19,7 +22,7 @@ HOURS = 60 * MINUTES
 
 # NON-AWQ BUT Still Very Fast
 # MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
-MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-7b-awq"
+MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
 HF_TOKEN = "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"
 
 
@@ -28,7 +31,7 @@ HF_TOKEN = "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"
 
 # take in args
 
-EVAL_FILE = "batch_6"
+EVAL_FILE = "hard_batch_1"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
@@ -126,8 +129,8 @@ def eval():
     # MAX_MODEL_LEN = 10 * 1024
 
     # BEST FOR 14B
-    # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 8192 * 3 // 2
+    MAX_NUM_SEQS = 16
+    MAX_MODEL_LEN = 1024 * 8
 
     # MAX_NUM_SEQS = 12
     # MAX_MODEL_LEN = 8192 * 3 // 2
@@ -136,10 +139,10 @@ def eval():
     # MAX_MODEL_LEN = 8192 * 3 // 2
 
     # BEST FOR 7B
-    MAX_NUM_SEQS = 32
-    MAX_MODEL_LEN = 1024 * 16
+    # MAX_NUM_SEQS = 32
+    # MAX_MODEL_LEN = 1024 * 16
 
-    FINAL_EVAL_NAME = f"7B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
+    FINAL_EVAL_NAME = f"14B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
 
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
@@ -346,7 +349,7 @@ def eval():
     # Each prediction (except the very first) must be returned within 30 minutes of the question being provided.
 
     # Path to the temporary CSV file
-    TEMP_CSV = "evals_reference.csv"
+    TEMP_CSV = f"evals_reference_{EVAL_FILE}.csv"
 
     def predict(
         id_: pl.DataFrame, question: pl.DataFrame
@@ -380,7 +383,6 @@ def eval():
         "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \textit{different} if there is a player with a different opponent in the two arrangements.)"
     ) """
 
-    # drop id column = 3, 6, 7, 10, 12, 15
     pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
         "pure_reference.csv", index=False
     )
@@ -391,21 +393,7 @@ def eval():
         calls the predict() function to process the problem.
         """
         # Attempt to read the CSV file.
-        try:
-            df = pd.read_csv(csv_file)
-        except Exception as e:
-            print("Error reading CSV:", e)
-            # If the file fails to load, use a dummy DataFrame.
-            df = pd.DataFrame(
-                {
-                    "id": [1, 2, 3],
-                    "problem": [
-                        "What is 2+2?",
-                        "What is the capital of France?",
-                        "How many days are in a year?",
-                    ],
-                }
-            )
+        df = pd.read_csv(csv_file)
 
         # randomly shuffle the rows
         df = df.sample(frac=1, random_state=2024).reset_index(drop=True)
@@ -441,17 +429,25 @@ def eval():
 
         # File paths (adjust if needed)
         reference_input_path = "reference.csv"
-        predictions_path = "evals_reference.csv"  # or 'temporary_predictions.csv' if that's what you named it
+        predictions_path = TEMP_CSV
 
-        # Load the reference data with the correct answers.
-        # (Do not drop the 'answer' column here!)
+        # Load the CSV files
         reference_df = pd.read_csv(reference_input_path)
-
-        # Load your temporary predictions (which should include at least 'id' and 'answer')
         predictions_df = pd.read_csv(predictions_path)
 
+        # Ensure the 'id' columns are strings and strip any extra whitespace
+        reference_df["id"] = reference_df["id"].astype(str).str.strip()
+        predictions_df["id"] = predictions_df["id"].astype(str).str.strip()
+
+        # Optionally, normalize the answer columns (e.g., lowercasing and stripping whitespace)
+        reference_df["answer"] = (
+            reference_df["answer"].astype(str).str.strip().str.lower()
+        )
+        predictions_df["answer"] = (
+            predictions_df["answer"].astype(str).str.strip().str.lower()
+        )
+
         # Merge the predictions with the reference data on the common 'id' column.
-        # If both DataFrames have an 'answer' column, the merged DataFrame will have these as 'answer_x' and 'answer_y'.
         merged_df = pd.merge(
             reference_df,
             predictions_df,
@@ -466,7 +462,7 @@ def eval():
         # Calculate metrics
         total = len(merged_df)
         correct = merged_df["is_correct"].sum()
-        accuracy = correct / total if total > 0 else 0
+        accuracy = correct / total
 
         print(f"Total predictions compared: {total}")
         print(f"Number of correct predictions: {correct}")
@@ -484,7 +480,7 @@ def eval():
         import io
 
         evals_csv_buffer = io.StringIO()
-        reference_df.to_csv(evals_csv_buffer, index=False)
+        predictions_df.to_csv(evals_csv_buffer, index=False)
         csv_content = evals_csv_buffer.getvalue()
         return csv_content.encode("utf-8"), FINAL_EVAL_NAME
 

@@ -102,7 +102,9 @@ def run():
 
     print("Running accelerate training script...")
 
-    cmd = [
+    cmd = ["sh", "train_sft_v2.sh"]
+
+    """ cmd = [
         "accelerate",
         "launch",
         "--config_file=recipes/accelerate_configs/zero3.yaml",
@@ -113,18 +115,17 @@ def run():
         "--learning_rate=5.0e-5",
         "--num_train_epochs=3",
         "--packing",
-        "--save_steps=5000",
-        "--eval_steps=1000",
         "--max_seq_length=4096",
         "--warmup_ratio=0.003",
         "--lr_scheduler_type=linear",
-        "--per_device_train_batch_size=1",
-        "--gradient_accumulation_steps=8",
+        "--per_device_train_batch_size=2",
+        "--gradient_accumulation_steps=4",
         "--gradient_checkpointing",
         "--bf16",
         "--torch_dtype=bfloat16",
+        "--evaluation_strategy=epoch",
         "--output_dir=data/DeepSeek-Qwen-7B-Distill",
-    ]
+    ] """
     # Move into the correct directory and execute the command
     # check if the directory exists
     if not os.path.exists("/model/open-r1"):
@@ -137,7 +138,7 @@ def run():
         ["mkdir", "-p", "open-r1/data/DeepSeek-Qwen-7B-Distill"],
         cwd="/model",
     )
-    if os.path.exists("/model/open-r1/model/checkpoints"):
+    if os.path.exists("/model/model/checkpoints"):
         _exec_subprocess(
             [
                 "cp",
