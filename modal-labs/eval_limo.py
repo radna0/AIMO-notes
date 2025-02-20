@@ -135,11 +135,11 @@ def eval():
     # MAX_MODEL_LEN = 8192
 
     # BEST FOR 14B
-    # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 1024 * 12
-
     MAX_NUM_SEQS = 16
-    MAX_MODEL_LEN = 1024 * 8
+    MAX_MODEL_LEN = 1024 * 12
+
+    # MAX_NUM_SEQS = 16
+    # MAX_MODEL_LEN = 1024 * 8
 
     # MAX_NUM_SEQS = 24
     # MAX_MODEL_LEN = 1024 * 8
