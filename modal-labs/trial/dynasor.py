@@ -36,7 +36,7 @@ HF_TOKEN = "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"
 
 # take in args
 
-EVAL_FILE = "reference"
+EVAL_FILE = "hard_batch_1"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
@@ -120,10 +120,10 @@ def eval():
 
     pd.set_option("display.max_colwidth", None)
     start_time = time.time()
-    cutoff_time = start_time + (4 * 60 + 55) * 60
-    cutoff_times = [
-        int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)
-    ]
+    # cutoff_time = start_time + (4 * 60 + 45) * 60
+    # cutoff_times = [
+    #     int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)
+    # ]
 
     from vllm import LLM, SamplingParams
 
@@ -136,13 +136,10 @@ def eval():
 
     # BEST FOR 14B
     # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 1024 * 12
+    # MAX_MODEL_LEN = 8192 * 3 // 2
 
     MAX_NUM_SEQS = 16
-    MAX_MODEL_LEN = 1024 * 8
-
-    # MAX_NUM_SEQS = 24
-    # MAX_MODEL_LEN = 1024 * 8
+    MAX_MODEL_LEN = 1024 * 12
 
     # MAX_NUM_SEQS = 32
     # MAX_MODEL_LEN = 8192 * 3 // 2
@@ -174,6 +171,17 @@ def eval():
 
     tokenizer = llm.get_tokenizer()
 
+    from dynasor.core.entropy import (
+        should_early_exit,
+        uncertain_words,
+        is_certain_answer,
+    )
+
+    probe_text = "... Oh, I suddenly got the answer to the whole problem, **Final Answer**\n\n\\[ \\boxed{"
+    probe_text_end = "}"
+    certainty_window = 2
+    token_interval = 32
+
     import re
     import keyword
 
@@ -191,65 +199,120 @@ def eval():
     import random
 
     def select_answer(answers):
-        counter = Counter()
-        for answer in answers:
+        """Weight answers from later stages more heavily"""
+        weighted_answers = []
+        for i, ans in enumerate(answers):
             try:
-                if int(answer) == float(answer):
-                    counter[int(answer)] += 1 + random.random() / 1_000
+                num = int(float(ans))
+                # Exponential weighting based on position
+                weight = 1.5**i
+                weighted_answers.extend([num] * int(weight))
             except:
-                pass
-        if not counter:
+                continue
+
+        if not weighted_answers:
             return 210
-        _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
-        return answer % 1000
+
+        counter = Counter(weighted_answers)
+        return max(counter.items(), key=lambda x: x[1])[0] % 1000
 
     def batch_message_generate(list_of_messages) -> list[list[dict]]:
         max_tokens = MAX_MODEL_LEN
-        if time.time() > cutoff_times[-1]:
-            print("Speedrun")
-            max_tokens = 1024 * 8
+        token_budgets = [max_tokens] * len(
+            list_of_messages
+        )  # Track remaining tokens per sequence
+        answers_history = [[] for _ in list_of_messages]
+        certainties_history = [[] for _ in list_of_messages]
+        active_indices = list(range(len(list_of_messages)))
 
+        # Initial generation parameters
         sampling_params = SamplingParams(
-            temperature=1.0,  # randomness of the sampling
+            temperature=1.0,
             min_p=0.01,
-            skip_special_tokens=True,  # Whether to skip special tokens in the output
-            max_tokens=max_tokens,
+            skip_special_tokens=True,
+            max_tokens=min(token_interval, max_tokens),  # Initial chunk size
             stop=["</think>"],
         )
 
-        request_output = llm.generate(
-            prompts=list_of_messages,
-            sampling_params=sampling_params,
+        while active_indices:
+            # Generate next chunk
+            current_prompts = [list_of_messages[i] for i in active_indices]
+            request_output = llm.generate(current_prompts, sampling_params)
+
+            # Process outputs and probe
+            new_active = []
+            probe_prompts = []
+            probe_indices = []
+
+            for idx, output in zip(active_indices, request_output):
+                # Update token budget
+                generated_tokens = len(output.outputs[0].token_ids)
+                token_budgets[idx] -= generated_tokens
+
+                # Stop sequences that exceed budget
+                if token_budgets[idx] <= 0:
+                    continue
+
+                # Update message with generated text
+                list_of_messages[idx] += output.outputs[0].text
+
+                # Prepare probing
+                probe_prompt = list_of_messages[idx] + probe_text
+                probe_prompts.append(probe_prompt)
+                probe_indices.append(idx)
+
+            # Get probe responses
+            if probe_prompts:
+                probe_params = SamplingParams(
+                    temperature=0.6, top_p=0.95, max_tokens=20, skip_special_tokens=True
+                )
+                probe_outputs = llm.generate(probe_prompts, probe_params)
+
+                for idx, probe_out in zip(probe_indices, probe_outputs):
+                    # Update probe token budget
+                    probe_tokens = len(probe_out.outputs[0].token_ids)
+                    token_budgets[idx] -= probe_tokens
+
+                    # Process probe response
+                    probe_response_text = probe_out.outputs[0].text
+                    answer = extract_boxed_text(probe_response_text)
+                    certain = is_certain_answer(probe_response_text, uncertain_words)
+
+                    answers_history[idx].append(answer)
+                    certainties_history[idx].append(certain)
+
+                    if should_early_exit(
+                        answers_history[idx],
+                        probe_response_text,
+                        uncertain_words,
+                        certainty_window,
+                        certainties_history[idx],
+                    ):
+                        # Finalize answer
+                        list_of_messages[idx] += f"{probe_text}{answer}{probe_text_end}"
+                        print(
+                            f"Early Exit with message: Length={len(list_of_messages[idx])} - Probe='{probe_text}{answer}{probe_text_end}'"
+                        )
+                    else:
+                        new_active.append(idx)
+
+            # Update active indices and chunk size
+            active_indices = new_active
+            remaining_budgets = [token_budgets[i] for i in active_indices]
+
+            if remaining_budgets:
+                sampling_params.max_tokens = min(
+                    token_interval,
+                    min(remaining_budgets),  # Don't exceed smallest remaining budget
+                )
+
+        # Sort by final sequence length
+        sorted_outputs = sorted(
+            [(len(msg), msg) for msg in list_of_messages],
+            key=lambda x: x[0],
+            reverse=True,
         )
-
-        print(
-            [
-                len(single_request_output.outputs[0].token_ids)
-                for single_request_output in request_output
-            ]
-        )
-
-        sort_keys_and_list_of_messages = []
-
-        for messages, single_request_output in zip(list_of_messages, request_output):
-            # print()
-            # print(single_request_output.outputs[0].text)
-            # print()
-            messages += single_request_output.outputs[0].text
-
-            sort_keys_and_list_of_messages.append(
-                (len(single_request_output.outputs[0].token_ids), messages)
-            )
-
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
-        sort_keys_and_list_of_messages.sort(
-            key=lambda sort_key_and_messages: sort_key_and_messages[0]
-        )
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
-
-        list_of_messages = [messages for _, messages in sort_keys_and_list_of_messages]
-
-        return list_of_messages
+        return [msg for _, msg in sorted_outputs]
 
     def create_starter_messages(question, index):
         options = []
@@ -298,9 +361,6 @@ def eval():
 
         start_time = time.time()
 
-        if not EVAL and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            return 210
-
         if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv(
             "KAGGLE_IS_COMPETITION_RERUN"
         ):
@@ -313,14 +373,14 @@ def eval():
             ):
                 return 210
 
-        if time.time() > cutoff_time:
-            return 210
+        # if time.time() > cutoff_time:
+        #     return 210
 
         print(question)
 
         num_seqs = MAX_NUM_SEQS
-        if time.time() > cutoff_times[-1]:
-            num_seqs = 16
+        # if time.time() > cutoff_times[-1]:
+        #     num_seqs = 2 * MAX_NUM_SEQS // 3
 
         list_of_messages = [
             create_starter_messages(question, index) for index in range(num_seqs)
@@ -346,7 +406,7 @@ def eval():
 
         print("\n\n")
         print(f"Time taken: {time.time() - start_time}")
-        cutoff_times.pop()
+        # cutoff_times.pop()
         return answer
 
     # Replace this function with your inference code.
@@ -385,12 +445,16 @@ def eval():
         return pl.DataFrame({"id": id_, "answer": answer})
 
     """ predict_for_question(
+        "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \textit{different} if there is a player with a different opponent in the two arrangements.)"
+    ) """
+    predict_for_question(
         "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \\textit{different} if there is a player with a different opponent in the two arrangements.)"
     )
     predict_for_question(
         "Triangle $ABC$ has side length $AB = 120$ and circumradius $R = 100$. Let $D$ be the foot of the perpendicular from $C$ to the line $AB$. What is the greatest possible length of segment $CD$?"
     )
- """
+
+    return
 
     pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
         "pure_reference.csv", index=False

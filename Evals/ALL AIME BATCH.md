@@ -35,10 +35,6 @@ Incorrect predictions:
 
 # AWQ DeepSeek-Qwen-7B - PEP - no Think stop
 
-```
-# AWQ DeepSeek-Qwen-7B
-##############################################
-```
 
 # Batch 19
 ```
@@ -143,7 +139,7 @@ Incorrect predictions:
 
 ## Batch 14
 ```
-otal predictions compared: 50
+Total predictions compared: 50
 Number of correct predictions: 40
 Accuracy: 80.00%
 
@@ -253,61 +249,23 @@ Incorrect predictions:
 ## Batch 9
 ```
 Total predictions compared: 50
-Number of correct predictions: 0
-Accuracy: 0.00%
+Number of correct predictions: 38
+Accuracy: 76.00%
 
 Incorrect predictions:
             id  ... answer_pred
-0    2008-I-12  ...         375
-1      1995-13  ...         400
-2   2000-II-12  ...         118
-3    2013-I-12  ...          70
-4     2021-I-9  ...         567
-5    2005-I-10  ...          47
-6       1988-5  ...         634
-7      1991-14  ...         384
-8     2011-I-4  ...          56
-9    2010-II-9  ...          11
-10  2005-II-11  ...         889
-11      1991-2  ...         840
-12      1992-1  ...         400
-13  2006-II-10  ...         831
-14   2006-II-1  ...          46
-15      1990-2  ...         828
-16  2010-II-14  ...           7
+3    2013-I-12  ...           9
 17     1989-11  ...         495
-18  2003-II-14  ...          27
-19      2025-4  ...         117
-20  2024-II-13  ...         321
-21   2022-II-8  ...          10
-22   2019-I-11  ...          32
-23    2017-I-9  ...          45
-24    2014-I-3  ...         200
-25      1990-5  ...         432
-26     1983-12  ...          65
-27    2006-I-2  ...         901
-28    2021-I-5  ...          31
-29     1985-15  ...         864
-30     1985-14  ...          25
-31   2003-II-7  ...         400
-32      1996-3  ...          44
-33   2007-II-4  ...         450
-34  2020-II-15  ...         560
-35    2012-I-3  ...         216
-36    2017-I-8  ...          41
+18  2003-II-14  ...          83
+21   2022-II-8  ...         280
+22   2019-I-11  ...          42
+29     1985-15  ...         432
+34  2020-II-15  ...         845
 37     1990-13  ...         183
-38    2007-I-4  ...         105
-39     1996-14  ...         768
-40   2006-II-9  ...          41
-41      2025-7  ...          12
-42    2021-I-6  ...         192
-43   2014-II-2  ...          76
+40   2006-II-9  ...          29
+41      2025-7  ...           7
 44     1996-13  ...           3
-45    2006-I-1  ...          84
-46  2016-II-12  ...         732
 47   2018-I-14  ...         105
-48  2017-II-10  ...         546
-49   2005-II-4  ...         435
 
 ```
 ## Batch 8
@@ -330,22 +288,139 @@ Incorrect predictions:
 ```
 ## Batch 7
 ```
+Total predictions compared: 50
+Number of correct predictions: 39
+Accuracy: 78.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+2    2014-I-15  ...          14
+8   2021-II-10  ...          14
+10  2022-II-14  ...         294
+21     1995-14  ...         138
+28   2007-I-10  ...         775
+30      1996-9  ...           2
+32    2016-I-3  ...          80
+37   2000-I-15  ...           0
+39   2018-I-13  ...           0
+43  2010-II-15  ...           2
+47      1997-6  ...          12
 ```
 ## Batch 6
 ```
+Total predictions compared: 50
+Number of correct predictions: 40
+Accuracy: 80.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+4     2012-I-4  ...          11
+11   2018-I-10  ...         886
+18    2022-I-6  ...         250
+19   2016-I-14  ...         579
+25   2022-II-9  ...          59
+29   2023-I-14  ...           0
+31  2021-II-14  ...         773
+33   2006-I-15  ...           3
+37     1994-11  ...         469
+44  2020-II-14  ...           6
 ```
 ## Batch 5
 ```
+Total predictions compared: 50
+Number of correct predictions: 39
+Accuracy: 78.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+0      1990-14  ...         597
+1     2004-I-9  ...          13
+6     2023-I-9  ...         410
+7   2020-II-12  ...           0
+11   2024-II-5  ...         100
+24   2012-II-4  ...          43
+27      1992-5  ...         990
+29   2004-I-15  ...           2
+38     1988-15  ...         256
+40  2006-II-13  ...          30
+49   2018-II-4  ...           8
 ```
 ## Batch 4
 ```
+Total predictions compared: 50
+Number of correct predictions: 33
+Accuracy: 66.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+0     2022-I-8  ...         432
+5    2023-II-9  ...         362
+9    2023-I-12  ...          27
+10  2010-II-10  ...         324
+13     1993-14  ...         400
+16   2000-I-12  ...         176
+20   2024-II-8  ...           7
+21   2021-II-8  ...         841
+22   2021-II-9  ...          45
+24   2019-I-12  ...          37
+26   2013-I-13  ...           1
+27  2021-II-11  ...          97
+30     2025-10  ...         114
+31    2007-I-6  ...         204
+35  2016-II-14  ...         350
+43  2019-II-14  ...          24
+47   2021-I-15  ...         281
+
 ```
 ## Batch 3
 ```
+Total predictions compared: 50
+Number of correct predictions: 40
+Accuracy: 80.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+1     2021-I-7  ...          49
+8    2019-II-5  ...         760
+21  2013-II-11  ...         700
+33  2009-II-15  ...          11
+35   2022-I-13  ...         999
+38   2017-I-13  ...          65
+39  2019-II-12  ...           8
+40   2006-I-12  ...         636
+45     2025-14  ...          42
+48   2022-I-14  ...         438
 ```
 ## Batch 2
 ```
+Total predictions compared: 50
+Number of correct predictions: 44
+Accuracy: 88.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+1     2008-I-7  ...           1
+2      2025-11  ...           0
+4   2004-II-15  ...         470
+9   2004-II-13  ...          64
+11   2019-I-15  ...         163
+34   2002-II-4  ...         203
 ```
 ## Batch 1
 ```
+Total predictions compared: 50
+Number of correct predictions: 41
+Accuracy: 82.00%
+
+Incorrect predictions:
+            id  ... answer_pred
+9   2000-II-14  ...           0
+21   2014-II-9  ...         601
+25  2001-II-15  ...         175
+32      1987-6  ...          87
+35   2018-I-15  ...          16
+37     1998-15  ...         780
+38      1993-9  ...           6
+39  2013-II-12  ...         556
+49   2001-I-15  ...          71
 ```

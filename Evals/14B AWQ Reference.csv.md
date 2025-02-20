@@ -12,7 +12,7 @@ os.environ["VLLM_USE_V1"]='1'
 MAX_NUM_SEQS = 32
 MAX_MODEL_LEN = 8192
 
-Maximum concurrency for 12288 tokens per request: 34.61x
+Maximum concurrency for 8192 tokens per request: 34.61x
 
 ['180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180', '180']
 180
