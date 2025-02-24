@@ -25,9 +25,7 @@ HOURS = 60 * MINUTES
 # Modified Version of AWQ
 # MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
 
-# NON-AWQ BUT Still Very Fast
-# MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
-MODEL_NAME = "neuralmagic/DeepSeek-R1-Distill-Qwen-14B-quantized.w4a16"
+MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
 HF_TOKEN = "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"
 
 
@@ -61,7 +59,7 @@ vllm_image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
     .apt_install("git", "build-essential", "cmake", "curl", "libcurl4-openssl-dev")
     .pip_install(
-        "vllm==0.7.2",
+        "vllm",
         "torch",
         "transformers",
         "pandas",
@@ -79,6 +77,7 @@ vllm_image = (
     .run_commands(
         "git clone https://github.com/radna0/Dynasor.git",
         "cd Dynasor && pip install . && cd -",
+        f"huggingface-cli login --token {HF_TOKEN}",
     )
     .add_local_file(f"data/aime/{EVAL_FILE}.csv", remote_path="/root/reference.csv")
 )
@@ -98,16 +97,6 @@ def eval():
     os.environ["VLLM_USE_V1"] = "1"
 
     os.environ["VLLM_FLASH_ATTN_VERSION"] = "3"  # on h100 and above
-    # os.environ["VLLM_USE_TRITON_FLASH_ATTN"]='1'
-    # os.environ["VLLM_USE_TRITON_AWQ"]='1'
-
-    # os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
-    # os.environ["VLLM_USE_FLASHINFER_SAMPLER"] = "1"
-    # os.environ["VLLM_FLASHINFER_FORCE_TENSOR_CORES"] = "1"
-
-    # os.environ["VLLM_USE_RAY_SPMD_WORKER"]='1'
-    # os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"]='1'
-
     import gc
     import time
     import warnings
@@ -120,9 +109,9 @@ def eval():
 
     pd.set_option("display.max_colwidth", None)
     start_time = time.time()
-    cutoff_time = start_time + (4 * 60 + 55) * 60
+    cutoff_time = start_time + (1 * 60 + 55) * 60
     cutoff_times = [
-        int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)
+        int(x) for x in np.linspace(cutoff_time, start_time + 20 * 60, 50 + 1)
     ]
 
     from vllm import LLM, SamplingParams
@@ -131,12 +120,12 @@ def eval():
 
     llm_model_pth = MODEL_NAME
 
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 8192
+    MAX_NUM_SEQS = 16
+    MAX_MODEL_LEN = 1024 * 8
 
     # BEST FOR 14B
-    MAX_NUM_SEQS = 16
-    MAX_MODEL_LEN = 1024 * 12
+    # MAX_NUM_SEQS = 16
+    # MAX_MODEL_LEN = 1024 * 12
 
     # MAX_NUM_SEQS = 16
     # MAX_MODEL_LEN = 1024 * 8
@@ -151,7 +140,7 @@ def eval():
     # MAX_NUM_SEQS = 32
     # MAX_MODEL_LEN = 1024 * 16
 
-    FINAL_EVAL_NAME = f"14B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
+    FINAL_EVAL_NAME = f"7B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
 
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
@@ -162,6 +151,7 @@ def eval():
         max_num_seqs=MAX_NUM_SEQS,  # Maximum number of sequences per iteration. Default is 256
         max_model_len=MAX_MODEL_LEN,  # Model context length
         trust_remote_code=True,  # Trust remote code (e.g., from HuggingFace) when downloading the model and tokenizer
+        enable_prefix_caching=True,
         tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
         gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
         seed=2024,
@@ -173,13 +163,14 @@ def eval():
     print(vllm.__version__)
 
     tokenizer = llm.get_tokenizer()
-
     import re
-    import keyword
 
-    def extract_boxed_text(text):
-        pattern = r"oxed{(.*?)}"
-        matches = re.findall(pattern, text)
+    def count_tokens(text: str) -> int:
+        return len(tokenizer.encode(text))
+
+    def extract_boxed_text(text: str) -> str:
+        pattern: str = r"oxed{(.*?)}"
+        matches: list[str] = re.findall(pattern, text)
         if not matches:
             return ""
         for match in matches[::-1]:
@@ -187,102 +178,80 @@ def eval():
                 return match
         return ""
 
-    from collections import Counter
+    from collections import defaultdict
     import random
 
-    def select_answer(answers):
-        counter = Counter()
+    def select_answer(answers: list[str]) -> int:
+        counter: defaultdict[int, float] = defaultdict(float)
         for answer in answers:
             try:
                 if int(answer) == float(answer):
-                    counter[int(answer)] += 1 + random.random() / 1_000
-            except:
+                    counter[int(answer)] += (1 + random.random() / 1_000) * 1_000_000
+            except Exception:
                 pass
         if not counter:
-            return 210
-        _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
-        return answer % 1000
+            return -1
+        _, answer_result = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
+        return answer_result % 1000
 
-    def batch_message_generate(list_of_messages) -> list[list[dict]]:
-        max_tokens = MAX_MODEL_LEN
-        if time.time() > cutoff_times[-1]:
-            print("Speedrun")
-            max_tokens = 1024 * 8
+    def batch_text_complete(
+        completion_texts: list[str], num_reserved_tokens=0
+    ) -> list[str]:
 
-        sampling_params = SamplingParams(
-            temperature=1.0,  # randomness of the sampling
-            min_p=0.01,
-            skip_special_tokens=True,  # Whether to skip special tokens in the output
-            max_tokens=max_tokens,
-            stop=["</think>"],
-        )
+        sampling_params = [
+            SamplingParams(
+                temperature=0.6,  # randomness of the sampling
+                min_p=0.01,
+                skip_special_tokens=True,  # Whether to skip special tokens in the output
+                max_tokens=MAX_MODEL_LEN
+                - count_tokens(completion_text)
+                - num_reserved_tokens,
+                # logit_bias={x:-1 for x in [144540, 21103, 48053, 9848, 96736, 13187, 104995, 94237, 44868, 3968]},
+                # logit_bias={x:-5 for x in [14190]},
+                stop=["</think>"],
+            )
+            for completion_text in completion_texts
+        ]
 
         request_output = llm.generate(
-            prompts=list_of_messages,
+            prompts=completion_texts,
             sampling_params=sampling_params,
         )
 
-        print(
-            [
-                len(single_request_output.outputs[0].token_ids)
-                for single_request_output in request_output
-            ]
-        )
+        sort_keys_and_completion_texts: list[tuple[int, str]] = []
 
-        sort_keys_and_list_of_messages = []
-
-        for messages, single_request_output in zip(list_of_messages, request_output):
-            # print()
-            # print(single_request_output.outputs[0].text)
-            # print()
-            messages += single_request_output.outputs[0].text
-
-            sort_keys_and_list_of_messages.append(
-                (len(single_request_output.outputs[0].token_ids), messages)
+        for completion_text, single_request_output in zip(
+            completion_texts, request_output
+        ):
+            completion_text += single_request_output.outputs[0].text
+            sort_keys_and_completion_texts.append(
+                (len(single_request_output.outputs[0].token_ids), completion_text)
             )
 
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
-        sort_keys_and_list_of_messages.sort(
-            key=lambda sort_key_and_messages: sort_key_and_messages[0]
+        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
+        sort_keys_and_completion_texts.sort(
+            key=lambda sort_key_and_completion_text: sort_key_and_completion_text[0]
         )
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
+        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
 
-        list_of_messages = [messages for _, messages in sort_keys_and_list_of_messages]
+        completion_texts = [
+            completion_text for _, completion_text in sort_keys_and_completion_texts
+        ]
 
-        return list_of_messages
+        return completion_texts
 
-    def create_starter_messages(question, index):
+    def create_starter_text(question: str, index: int) -> str:
         options = []
-        for _ in range(13):
+        for _ in range(1):
             options.append(
                 [
                     {
                         "role": "system",
-                        "content": "You are the most powerful math expert. Please solve the problems with deep resoning. You are careful and always recheck your conduction. You will never give answer directly until you have enough confidence. You should think step-by-step. Return final answer within \\boxed{}, after taking modulo 1000.",
+                        "content": "You are a helpful and harmless math assistant. Please reason step by step. Only work with exact numbers. Only submit an answer if you are sure. After you get your final answer, take modulo 1000, and return the final answer within \\boxed{}.",
                     },
                     {"role": "user", "content": question},
                 ]
             )
-        for _ in range(2):
-            options.append(
-                [
-                    {
-                        "role": "system",
-                        "content": "You are a helpful and harmless math assistant. You should think step-by-step and you are good at reverse thinking to recheck your answer and fix all possible mistakes. After you get your final answer, take modulo 1000, and return the final answer within \\boxed{}.",
-                    },
-                    {"role": "user", "content": question},
-                ],
-            )
-
-        options.append(
-            [
-                {
-                    "role": "system",
-                    "content": "Please carefully read the problem statement first to ensure you fully understand its meaning and key points. Then, solve the problem correctly and completely through deep reasoning. Finally, return the result modulo 1000 and enclose it in \\boxed{}.",
-                },
-                {"role": "user", "content": question},
-            ],
-        )
 
         starter_text = options[index % len(options)]
 
@@ -292,60 +261,79 @@ def eval():
 
         return res
 
+    def create_estimation_prompt(completion_text: str) -> str:
+        return (
+            completion_text
+            + "\n\nOh, I suddenly got the answer to the whole problem, Final Answer: \\boxed{"
+        )
+
     def predict_for_question(question: str) -> int:
         import os
-        import time
 
-        start_time = time.time()
-
-        if not EVAL and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            return 210
-
-        if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv(
-            "KAGGLE_IS_COMPETITION_RERUN"
-        ):
-            # if "Triangle" not in question:
-            #     return 210
+        # selected_questions_only: bool = True
+        selected_questions_only = False
+        if selected_questions_only and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
+            # if "circumcircle" not in question:
+            #    return 210
             if (
                 "Triangle" not in question
-                and "delightful" not in question
-                and "George" not in question
+                and "airline" not in question
+                and "circumcircle" not in question
             ):
                 return 210
 
         if time.time() > cutoff_time:
             return 210
 
-        print(question)
-
-        num_seqs = MAX_NUM_SEQS
+        num_reserved_tokens: int = 40
         if time.time() > cutoff_times[-1]:
-            num_seqs = 16
+            num_reserved_tokens = -1 * (MAX_MODEL_LEN // 2)
 
-        list_of_messages = [
-            create_starter_messages(question, index) for index in range(num_seqs)
+        completion_texts: list[str] = [
+            create_starter_text(question, index) for index in range(MAX_NUM_SEQS)
         ]
-        list_of_messages = batch_message_generate(list_of_messages)
+        completion_texts: list[str] = batch_text_complete(
+            completion_texts, num_reserved_tokens=num_reserved_tokens
+        )
+        completion_answers: list[str] = [
+            extract_boxed_text(completion_text) for completion_text in completion_texts
+        ]
+        print(completion_answers)
+
+        answer: int = select_answer(completion_answers)
+        data = {
+            "question": [question] * len(completion_texts),
+            "completion_text": completion_texts,
+            "completion_answer": completion_answers,
+        }
+
+        if time.time() < cutoff_times[-1] and answer == -1:
+            estimation_texts: list[str] = [
+                create_estimation_prompt(completion_text)
+                for completion_text in completion_texts
+            ]
+            estimation_texts: list[str] = batch_text_complete(
+                estimation_texts, num_reserved_tokens=1
+            )
+            estimated_answers: list[str] = [
+                extract_boxed_text(estimation_text)
+                for estimation_text in estimation_texts
+            ]
+            print(estimated_answers)
+
+            answer = select_answer(estimated_answers)
+            data["estimation_text"] = estimation_texts
+            data["estimated_answer"] = estimated_answers
 
         if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            df = pd.DataFrame(
-                {
-                    "question": [question] * len(list_of_messages),
-                    "message": [messages for messages in list_of_messages],
-                }
-            )
+            df = pd.DataFrame(data)
             df.to_csv(f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False)
 
-        all_extracted_answers = [
-            extract_boxed_text(completion_text) for completion_text in list_of_messages
-        ]
+        print(answer, "\n\n")
 
-        print(all_extracted_answers)
-        answer = select_answer(all_extracted_answers)
-        print(answer)
+        if answer == -1:
+            answer = 210
 
-        print("\n\n")
-        print(f"Time taken: {time.time() - start_time}")
         cutoff_times.pop()
         return answer
 
@@ -384,13 +372,24 @@ def eval():
 
         return pl.DataFrame({"id": id_, "answer": answer})
 
-    """ predict_for_question(
+    predict_for_question(
         "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \\textit{different} if there is a player with a different opponent in the two arrangements.)"
     )
     predict_for_question(
-        "Triangle $ABC$ has side length $AB = 120$ and circumradius $R = 100$. Let $D$ be the foot of the perpendicular from $C$ to the line $AB$. What is the greatest possible length of segment $CD$?"
+        "We call a sequence $a_1, a_2, \\ldots$ of non-negative integers \\textit{delightful} if there exists a positive integer $N$ such that for all $n > N$, $a_n = 0$, and for all $i \\geq 1$, $a_i$ counts the number of multiples of $i$ in $a_1, a_2, \\l\\dots, a_N$. How many delightful sequences of non-negative integers are there?"
     )
- """
+    predict_for_question(
+        "Let $ABC$ be a triangle with $BC=108$, $CA=126$, and $AB=39$. Point $X$ lies on segment $AC$ such that $BX$ bisects $\\angle CBA$. Let $\\omega$ be the circumcircle of triangle $ABX$. Let $Y$ be a point on $\\omega$ different from $X$ such that $CX=CY$. Line $XY$ meets $BC$ at $E$. The length of the segment $BE$ can be written as $\\frac{m}{n}$, where $m$ and $n$ are coprime positive integers. Find $m+n$."
+    )
+    predict_for_question(
+        "Three airline companies operate flights from Dodola island. Each company has a different schedule of departures. The first company departs every 100 days, the second every 120 days and the third every 150 days. What is the greatest positive integer $d$ for which it is true that there will be $d$ consecutive days without a flight from Dodola island, regardless of the departure times of the various airlines?"
+    )
+    predict_for_question(
+        "For positive integers $x_1,\\ldots, x_n$ define $G(x_1, \\ldots, x_n)$ to be the sum of their $\\frac{n(n-1)}{2}$ pairwise greatest common divisors. We say that an integer $n \\geq 2$ is \\emph{artificial} if there exist $n$ different positive integers $a_1, ..., a_n$ such that \
+\\[a_1 + \\cdots + a_n = G(a_1, \\ldots, a_n) +1.\\] \
+Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
+    )
+    return
 
     pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
         "pure_reference.csv", index=False

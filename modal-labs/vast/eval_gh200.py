@@ -1,114 +1,24 @@
-import os
-import modal
-import subprocess
+def main(args):
+    MODEL_NAME = args.model
 
-import random
+    EVAL_FILE = "hard_batch_1"
+    print(f"Using evaluation file: {EVAL_FILE}")
 
-id = random.randint(0, 1000000)
+    # copy file from ../data/aime/{EVAL_FILE}.csv to reference.csv
+    import shutil
 
-cuda_version = "12.4.0"  # should be no greater than host CUDA version
-flavor = "devel"  #  includes full CUDA toolkit
-operating_sys = "ubuntu22.04"
-tag = f"{cuda_version}-{flavor}-{operating_sys}"
+    shutil.copy(f"{EVAL_FILE}.csv", "reference.csv")
 
-app = modal.App(f"eval-{id}-notebook")
-
-
-N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
-
-MINUTES = 60  # seconds
-HOURS = 60 * MINUTES
-
-
-# MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
-
-# Modified Version of AWQ
-# MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
-
-# NON-AWQ BUT Still Very Fast
-# MODEL_NAME = "radna/OpenR1-Qwen-7B-AWQ"
-MODEL_NAME = "neuralmagic/DeepSeek-R1-Distill-Qwen-14B-quantized.w4a16"
-HF_TOKEN = "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"
-
-
-# VERY SLOW
-# MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-
-# take in args
-
-EVAL_FILE = "reference"
-print(f"Using evaluation file: {EVAL_FILE}")
-
-
-def hf_download():
-    from huggingface_hub import hf_hub_download, snapshot_download
-
-    deepseek_model = snapshot_download(
-        MODEL_NAME,
-        cache_dir="/cache",
-        token=HF_TOKEN,
-        force_download=True,
-    )
-
-
-vol = modal.Volume.from_name(
-    "hf-hub-cache",
-    create_if_missing=True,
-)
-
-
-vllm_image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
-    .apt_install("git", "build-essential", "cmake", "curl", "libcurl4-openssl-dev")
-    .pip_install(
-        "vllm==0.7.2",
-        "torch",
-        "transformers",
-        "pandas",
-        "polars",
-        "numpy",
-        "huggingface_hub[hf_transfer]",
-        "flashinfer-python",
-    )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "0"})
-    .run_function(
-        hf_download,
-        # persist the HF cache to a Modal Volume so future runs don't re-download models
-        volumes={"/cache": vol},
-    )
-    .run_commands(
-        "git clone https://github.com/radna0/Dynasor.git",
-        "cd Dynasor && pip install . && cd -",
-    )
-    .add_local_file(f"data/aime/{EVAL_FILE}.csv", remote_path="/root/reference.csv")
-)
-
-
-@app.function(
-    image=vllm_image,
-    gpu=modal.gpu.H100(count=N_GPU),
-    container_idle_timeout=5 * MINUTES,
-    timeout=24 * HOURS,
-    # allow_concurrent_inputs=1000,
-)
-def eval():
     import os
 
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ["VLLM_USE_V1"] = "1"
 
+    # On GH200, Set to "spawn", default is "fork"
+    os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+
     os.environ["VLLM_FLASH_ATTN_VERSION"] = "3"  # on h100 and above
-    # os.environ["VLLM_USE_TRITON_FLASH_ATTN"]='1'
-    # os.environ["VLLM_USE_TRITON_AWQ"]='1'
 
-    # os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
-    # os.environ["VLLM_USE_FLASHINFER_SAMPLER"] = "1"
-    # os.environ["VLLM_FLASHINFER_FORCE_TENSOR_CORES"] = "1"
-
-    # os.environ["VLLM_USE_RAY_SPMD_WORKER"]='1'
-    # os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"]='1'
-
-    import gc
     import time
     import warnings
 
@@ -120,10 +30,10 @@ def eval():
 
     pd.set_option("display.max_colwidth", None)
     start_time = time.time()
-    cutoff_time = start_time + (4 * 60 + 55) * 60
-    cutoff_times = [
-        int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)
-    ]
+    cutoff_time = start_time + (1 * 60 + 40) * 60
+    """ cutoff_times = [
+        int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 80 + 1)
+    ] """
 
     from vllm import LLM, SamplingParams
 
@@ -131,28 +41,8 @@ def eval():
 
     llm_model_pth = MODEL_NAME
 
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 8192
-
-    # BEST FOR 14B
-    MAX_NUM_SEQS = 16
+    MAX_NUM_SEQS = args.num_seqs
     MAX_MODEL_LEN = 1024 * 12
-
-    # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 1024 * 8
-
-    # MAX_NUM_SEQS = 24
-    # MAX_MODEL_LEN = 1024 * 8
-
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 8192 * 3 // 2
-
-    # BEST FOR 7B
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 1024 * 16
-
-    FINAL_EVAL_NAME = f"14B_AWQ_DeepSeek_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
-
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
 
@@ -162,6 +52,7 @@ def eval():
         max_num_seqs=MAX_NUM_SEQS,  # Maximum number of sequences per iteration. Default is 256
         max_model_len=MAX_MODEL_LEN,  # Model context length
         trust_remote_code=True,  # Trust remote code (e.g., from HuggingFace) when downloading the model and tokenizer
+        enable_prefix_caching=True,
         tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
         gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
         seed=2024,
@@ -175,11 +66,13 @@ def eval():
     tokenizer = llm.get_tokenizer()
 
     import re
-    import keyword
 
-    def extract_boxed_text(text):
-        pattern = r"oxed{(.*?)}"
-        matches = re.findall(pattern, text)
+    def count_tokens(text: str) -> int:
+        return len(tokenizer.encode(text))
+
+    def extract_boxed_text(text: str) -> str:
+        pattern: str = r"oxed{(.*?)}"
+        matches: list[str] = re.findall(pattern, text)
         if not matches:
             return ""
         for match in matches[::-1]:
@@ -187,69 +80,79 @@ def eval():
                 return match
         return ""
 
-    from collections import Counter
+    from collections import defaultdict
     import random
 
-    def select_answer(answers):
-        counter = Counter()
+    def select_answer(answers: list[str]) -> int:
+        counter: defaultdict[int, float] = defaultdict(float)
         for answer in answers:
             try:
                 if int(answer) == float(answer):
-                    counter[int(answer)] += 1 + random.random() / 1_000
-            except:
+                    counter[int(answer)] += (1 + random.random() / 1_000) * 1_000_000
+            except Exception:
                 pass
         if not counter:
-            return 210
-        _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
-        return answer % 1000
+            return -1
+        sum_value, answer_result = sorted(
+            [(v, k) for k, v in counter.items()], reverse=True
+        )[0]
 
-    def batch_message_generate(list_of_messages) -> list[list[dict]]:
-        max_tokens = MAX_MODEL_LEN
-        if time.time() > cutoff_times[-1]:
-            print("Speedrun")
-            max_tokens = 1024 * 8
+        print(f"sum_value: {sum_value}")
 
-        sampling_params = SamplingParams(
-            temperature=1.0,  # randomness of the sampling
-            min_p=0.01,
-            skip_special_tokens=True,  # Whether to skip special tokens in the output
-            max_tokens=max_tokens,
-            stop=["</think>"],
-        )
+        # Calculate the count based on the sum_value
+        count = int(sum_value // 1_000_000)
+        # Check if the count is less than or equal to 1
+        print(f"count: {count}")
+        if count <= 1:
+            return -1
+        return answer_result % 1000
+
+    def batch_text_complete(
+        completion_texts: list[str], num_reserved_tokens=0, cur_max_model_len=0
+    ) -> list[str]:
+
+        print(f"Using cur_max_model_len: {cur_max_model_len}")
+        sampling_params = [
+            SamplingParams(
+                temperature=0.6,  # randomness of the sampling
+                min_p=0.01,
+                skip_special_tokens=True,  # Whether to skip special tokens in the output
+                max_tokens=cur_max_model_len
+                - count_tokens(completion_text)
+                - num_reserved_tokens,
+                # logit_bias={x:-1 for x in [144540, 21103, 48053, 9848, 96736, 13187, 104995, 94237, 44868, 3968]},
+                # logit_bias={x:-5 for x in [14190]},
+                stop=["</think>"],
+            )
+            for completion_text in completion_texts
+        ]
 
         request_output = llm.generate(
-            prompts=list_of_messages,
+            prompts=completion_texts,
             sampling_params=sampling_params,
         )
 
-        print(
-            [
-                len(single_request_output.outputs[0].token_ids)
-                for single_request_output in request_output
-            ]
-        )
+        sort_keys_and_completion_texts: list[tuple[int, str]] = []
 
-        sort_keys_and_list_of_messages = []
-
-        for messages, single_request_output in zip(list_of_messages, request_output):
-            # print()
-            # print(single_request_output.outputs[0].text)
-            # print()
-            messages += single_request_output.outputs[0].text
-
-            sort_keys_and_list_of_messages.append(
-                (len(single_request_output.outputs[0].token_ids), messages)
+        for completion_text, single_request_output in zip(
+            completion_texts, request_output
+        ):
+            completion_text += single_request_output.outputs[0].text
+            sort_keys_and_completion_texts.append(
+                (len(single_request_output.outputs[0].token_ids), completion_text)
             )
 
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
-        sort_keys_and_list_of_messages.sort(
-            key=lambda sort_key_and_messages: sort_key_and_messages[0]
+        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
+        sort_keys_and_completion_texts.sort(
+            key=lambda sort_key_and_completion_text: sort_key_and_completion_text[0]
         )
-        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
+        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
 
-        list_of_messages = [messages for _, messages in sort_keys_and_list_of_messages]
+        completion_texts = [
+            completion_text for _, completion_text in sort_keys_and_completion_texts
+        ]
 
-        return list_of_messages
+        return completion_texts
 
     def create_starter_messages(question, index):
         options = []
@@ -292,6 +195,12 @@ def eval():
 
         return res
 
+    def create_estimation_prompt(completion_text: str) -> str:
+        return (
+            completion_text
+            + "\n\nOh, I suddenly got the answer to the whole problem, Final Answer: \\boxed{"
+        )
+
     def predict_for_question(question: str) -> int:
         import os
         import time
@@ -317,36 +226,68 @@ def eval():
             return 210
 
         print(question)
+        num_reserved_tokens: int = 40
 
-        num_seqs = MAX_NUM_SEQS
-        if time.time() > cutoff_times[-1]:
-            num_seqs = 16
+        cur_max_model_len = 1024 * 8
+        """ if time.time() > cutoff_times[-1]:
+            cur_max_model_len = MAX_MODEL_LEN """
 
-        list_of_messages = [
-            create_starter_messages(question, index) for index in range(num_seqs)
+        completion_texts: list[str] = [
+            create_starter_messages(question, index) for index in range(MAX_NUM_SEQS)
         ]
-        list_of_messages = batch_message_generate(list_of_messages)
+        completion_texts: list[str] = batch_text_complete(
+            completion_texts,
+            num_reserved_tokens=num_reserved_tokens,
+            cur_max_model_len=cur_max_model_len,
+        )
+        completion_answers: list[str] = [
+            extract_boxed_text(completion_text) for completion_text in completion_texts
+        ]
+        print(completion_answers)
+
+        answer: int = select_answer(completion_answers)
+        data = {
+            "question": [question] * len(completion_texts),
+            "completion_text": completion_texts,
+            "completion_answer": completion_answers,
+        }
+
+        guess_time = time.time()
+        guess = 3
+        idx = 0
+        while idx < guess and answer == -1:
+            estimation_texts: list[str] = [
+                create_estimation_prompt(completion_text)
+                for completion_text in completion_texts
+            ]
+            estimation_texts: list[str] = batch_text_complete(
+                estimation_texts,
+                num_reserved_tokens=1,
+                cur_max_model_len=cur_max_model_len,
+            )
+            estimated_answers: list[str] = [
+                extract_boxed_text(estimation_text)
+                for estimation_text in estimation_texts
+            ]
+            print(estimated_answers)
+
+            answer = select_answer(estimated_answers)
+            data["estimation_text"] = estimation_texts
+            data["estimated_answer"] = estimated_answers
+            idx += 1
+
+        print(f"Guess Time taken: {time.time() - guess_time}")
 
         if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            df = pd.DataFrame(
-                {
-                    "question": [question] * len(list_of_messages),
-                    "message": [messages for messages in list_of_messages],
-                }
-            )
+            df = pd.DataFrame(data)
             df.to_csv(f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False)
 
-        all_extracted_answers = [
-            extract_boxed_text(completion_text) for completion_text in list_of_messages
-        ]
+        print(answer, "\n\n")
 
-        print(all_extracted_answers)
-        answer = select_answer(all_extracted_answers)
-        print(answer)
-
-        print("\n\n")
+        if answer == -1:
+            answer = 210
         print(f"Time taken: {time.time() - start_time}")
-        cutoff_times.pop()
+        # cutoff_times.pop()
         return answer
 
     # Replace this function with your inference code.
@@ -354,7 +295,11 @@ def eval():
     # Each prediction (except the very first) must be returned within 30 minutes of the question being provided.
 
     # Path to the temporary CSV file
-    TEMP_CSV = f"evals_reference_{EVAL_FILE}.csv"
+    import uuid
+
+    uid = str(uuid.uuid4())
+
+    TEMP_CSV = f"evals_{uid}_{EVAL_FILE}.csv"
 
     def predict(
         id_: pl.DataFrame, question: pl.DataFrame
@@ -390,7 +335,7 @@ def eval():
     predict_for_question(
         "Triangle $ABC$ has side length $AB = 120$ and circumradius $R = 100$. Let $D$ be the foot of the perpendicular from $C$ to the line $AB$. What is the greatest possible length of segment $CD$?"
     )
- """
+    """
 
     pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
         "pure_reference.csv", index=False
@@ -486,22 +431,28 @@ def eval():
         else:
             print("\nAll predictions match the reference!")
 
-        import io
 
-        evals_csv_buffer = io.StringIO()
-        predictions_df.to_csv(evals_csv_buffer, index=False)
-        csv_content = evals_csv_buffer.getvalue()
-        return csv_content.encode("utf-8"), FINAL_EVAL_NAME
+if __name__ == "__main__":
+    import argparse
+    import time
 
+    start = time.time()
 
-EVALS_DIR = "evals/"
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="casperhansen/deepseek-r1-distill-qwen-7b-awq",
+        help="Model to use",
+    )
+    parser.add_argument(
+        "--num_seqs",
+        type=int,
+        default=48,
+        help="Number of sequences to generate per prompt",
+    )
 
+    args = parser.parse_args()
+    main(args)
 
-@app.local_entrypoint()
-def main():
-    os.makedirs(EVALS_DIR, exist_ok=True)
-    data, file_postfix = eval.remote()
-    filename = os.path.join(EVALS_DIR, f"aime_{EVAL_FILE}_{file_postfix}_PEP.csv")
-    print(f"Writing to {filename}")
-    with open(filename, "wb") as f:
-        f.write(data)
+    print(f"Time Taken: {time.time() - start}")

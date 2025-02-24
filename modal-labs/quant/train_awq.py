@@ -3,7 +3,7 @@ import modal
 import subprocess
 
 
-app = modal.App("open-r1-awq-quantization-script")
+app = modal.App("awq-quantization-script")
 
 cuda_version = "12.4.0"  # should be no greater than host CUDA version
 flavor = "devel"  #  includes full CUDA toolkit
@@ -16,10 +16,10 @@ N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and onl
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
 
-MODEL_NAME = "open-r1/OpenR1-Qwen-7B"
+MODEL_NAME = "Jianyuan1/deepseek-r1-14b-cot-math-reasoning-full"
+QUANT_PATH = "/model/dyve-14B"
+PUBLISHED_NAME = "radna/deepseek-r1-14b-dyve-AWQ"
 HF_TOKEN = "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"
-
-EVAL_FILE = "batch_13"
 
 
 def hf_download():
@@ -79,7 +79,7 @@ def run():
     from transformers import AutoTokenizer
 
     model_path = MODEL_NAME
-    quant_path = "/model/openr1-qwen-7B-AWQ"
+    quant_path = QUANT_PATH
     quant_config = {
         "zero_point": True,
         "q_group_size": 128,
@@ -88,8 +88,13 @@ def run():
     }
 
     # Load model
-    model = AutoAWQForCausalLM.from_pretrained(model_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoAWQForCausalLM.from_pretrained(
+        model_path,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+    )
 
     # Quantize
     model.quantize(tokenizer, quant_config=quant_config)

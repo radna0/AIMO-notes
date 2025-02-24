@@ -1,14 +1,33 @@
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--max_tokens",
+    type=int,
+    default=1024 * 12,
+    help="Maximum number of tokens to generate",
+)
+parser.add_argument(
+    "--num_seqs",
+    type=int,
+    default=16,
+    help="Number of sequences to generate per prompt",
+)
+
+args = parser.parse_args()
+
+
 MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
 HF_TOKEN = "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"
 
-EVAL_FILE = "reference"
+EVAL_FILE = "hard_batch_1"
 print(f"Using evaluation file: {EVAL_FILE}")
 
 
 # copy file from ../data/aime/{EVAL_FILE}.csv to reference.csv
 import shutil
 
-shutil.copy(f"../data/aime/{EVAL_FILE}.csv", "reference.csv")
+shutil.copy(f"{EVAL_FILE}.csv", "reference.csv")
 
 
 import os
@@ -40,9 +59,7 @@ import torch
 pd.set_option("display.max_colwidth", None)
 start_time = time.time()
 cutoff_time = start_time + (4 * 60 + 55) * 60
-cutoff_times = [
-    int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)
-]
+cutoff_times = [int(x) for x in np.linspace(cutoff_time, start_time + 60 * 60, 50 + 1)]
 
 from vllm import LLM, SamplingParams
 
@@ -54,8 +71,8 @@ llm_model_pth = MODEL_NAME
 # MAX_MODEL_LEN = 8192
 
 # BEST FOR 14B
-MAX_NUM_SEQS = 16
-MAX_MODEL_LEN = 1024 * 12
+MAX_NUM_SEQS = args.num_seqs
+MAX_MODEL_LEN = args.max_tokens
 
 # MAX_NUM_SEQS = 16
 # MAX_MODEL_LEN = 1024 * 8
@@ -96,6 +113,7 @@ tokenizer = llm.get_tokenizer()
 import re
 import keyword
 
+
 def extract_boxed_text(text):
     pattern = r"oxed{(.*?)}"
     matches = re.findall(pattern, text)
@@ -106,8 +124,10 @@ def extract_boxed_text(text):
             return match
     return ""
 
+
 from collections import Counter
 import random
+
 
 def select_answer(answers):
     counter = Counter()
@@ -121,6 +141,7 @@ def select_answer(answers):
         return 210
     _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
     return answer % 1000
+
 
 def batch_message_generate(list_of_messages) -> list[list[dict]]:
     max_tokens = MAX_MODEL_LEN
@@ -170,6 +191,7 @@ def batch_message_generate(list_of_messages) -> list[list[dict]]:
 
     return list_of_messages
 
+
 def create_starter_messages(question, index):
     options = []
     for _ in range(13):
@@ -211,6 +233,7 @@ def create_starter_messages(question, index):
 
     return res
 
+
 def predict_for_question(question: str) -> int:
     import os
     import time
@@ -220,9 +243,7 @@ def predict_for_question(question: str) -> int:
     if not EVAL and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
         return 210
 
-    if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv(
-        "KAGGLE_IS_COMPETITION_RERUN"
-    ):
+    if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
         # if "Triangle" not in question:
         #     return 210
         if (
@@ -268,16 +289,21 @@ def predict_for_question(question: str) -> int:
     cutoff_times.pop()
     return answer
 
+
 # Replace this function with your inference code.
 # The function should return a single integer between 0 and 999, inclusive.
 # Each prediction (except the very first) must be returned within 30 minutes of the question being provided.
 
 # Path to the temporary CSV file
-TEMP_CSV = f"evals_reference_{EVAL_FILE}.csv"
+import uuid
 
-def predict(
-    id_: pl.DataFrame, question: pl.DataFrame
-) -> pl.DataFrame | pd.DataFrame:
+uid = str(uuid.uuid4())
+
+
+TEMP_CSV = f"evals_{uid}_{EVAL_FILE}.csv"
+
+
+def predict(id_: pl.DataFrame, question: pl.DataFrame) -> pl.DataFrame | pd.DataFrame:
     id_ = id_["id"][0]
     print("------")
     print(id_)
@@ -303,6 +329,7 @@ def predict(
 
     return pl.DataFrame({"id": id_, "answer": answer})
 
+
 """ predict_for_question(
     "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \\textit{different} if there is a player with a different opponent in the two arrangements.)"
 )
@@ -314,6 +341,7 @@ predict_for_question(
 pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
     "pure_reference.csv", index=False
 )
+
 
 def sample_and_predict(csv_file: str) -> None:
     """
@@ -345,6 +373,7 @@ def sample_and_predict(csv_file: str) -> None:
         # Optionally add a small delay if needed.
         # time.sleep(1)
 
+
 sample_and_predict("pure_reference.csv")
 
 # if EVAL and not EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
@@ -368,9 +397,7 @@ if (
     predictions_df["id"] = predictions_df["id"].astype(str).str.strip()
 
     # Optionally, normalize the answer columns (e.g., lowercasing and stripping whitespace)
-    reference_df["answer"] = (
-        reference_df["answer"].astype(str).str.strip().str.lower()
-    )
+    reference_df["answer"] = reference_df["answer"].astype(str).str.strip().str.lower()
     predictions_df["answer"] = (
         predictions_df["answer"].astype(str).str.strip().str.lower()
     )
