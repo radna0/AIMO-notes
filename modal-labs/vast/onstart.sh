@@ -5,6 +5,8 @@ sudo apt-get install software-properties-common -y
 
 sudo apt-get install git build-essential cmake curl libcurl4-openssl-dev git-lfs -y
 
+pip install -U setuptools
+
 python3.10 -m pip uninstall torch vllm torchaudio torchvision
 
 python3.10 -m pip install vllm==0.7.2 torch torchaudio torchvision transformers pandas polars numpy huggingface_hub[hf_transfer] wandb accelerate deepspeed datasets

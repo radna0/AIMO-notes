@@ -11,7 +11,7 @@ operating_sys = "ubuntu22.04"
 tag = f"{cuda_version}-{flavor}-{operating_sys}"
 
 
-N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
+N_GPU = 4  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
 
 MINUTES = 60  # seconds
 HOURS = 60 * MINUTES
@@ -53,7 +53,7 @@ vllm_image = (
         "pip install autoawq[kernels]",
         f"huggingface-cli download {MODEL_NAME} --local-dir dyve-14B-awq --token {HF_TOKEN}",
         f"huggingface-cli login --token {HF_TOKEN}",
-        f"echo 'lmdeploy convert {MODEL_NAME} dyve-14B-awq/ --model-format=awq --dst-path=$1' > convert_model.sh",
+        f"echo 'lmdeploy convert {MODEL_NAME} dyve-14B-awq/ --model-format=awq --tp=4 --dst-path=$1' > convert_model.sh",
     )
 )
 
@@ -62,7 +62,7 @@ vol = modal.Volume.from_name("awq-models", create_if_missing=True)
 
 @app.function(
     image=vllm_image,
-    gpu=modal.gpu.H100(count=N_GPU),
+    gpu=modal.gpu.L4(count=N_GPU),
     container_idle_timeout=5 * MINUTES,
     timeout=24 * HOURS,
     # allow_concurrent_inputs=1000,

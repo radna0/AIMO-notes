@@ -8,6 +8,8 @@ sudo apt-get install git build-essential cmake curl libcurl4-openssl-dev -y
 pip install pip --upgrade
 pip install setuptools --upgrade
 
+python3.10 -m pip uninstall torch vllm torchaudio torchvision
+
 pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu126 
 
 # https://github.com/vllm-project/vllm/issues/10459#issuecomment-2561082572

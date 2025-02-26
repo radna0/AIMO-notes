@@ -25,7 +25,7 @@ HOURS = 60 * MINUTES
 # Modified Version of AWQ
 # MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
 
-MODEL_NAME = "radna/deepseek-14b-dyve-awq"
+MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
 HF_TOKEN = "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"
 
 
@@ -59,7 +59,7 @@ vllm_image = (
     modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
     .apt_install("git", "build-essential", "cmake", "curl", "libcurl4-openssl-dev")
     .pip_install(
-        "vllm",
+        "lmdeploy",
         "torch",
         "transformers",
         "pandas",
@@ -75,8 +75,6 @@ vllm_image = (
         volumes={"/cache": vol},
     )
     .run_commands(
-        "git clone https://github.com/radna0/Dynasor.git",
-        "cd Dynasor && pip install . && cd -",
         f"huggingface-cli login --token {HF_TOKEN}",
     )
     .add_local_file(f"data/aime/{EVAL_FILE}.csv", remote_path="/root/reference.csv")
@@ -93,10 +91,6 @@ vllm_image = (
 def eval():
     import os
 
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["VLLM_USE_V1"] = "1"
-
-    os.environ["VLLM_FLASH_ATTN_VERSION"] = "3"  # on h100 and above
     import gc
     import time
     import warnings
@@ -114,55 +108,38 @@ def eval():
         int(x) for x in np.linspace(cutoff_time, start_time + 20 * 60, 50 + 1)
     ] """
 
-    from vllm import LLM, SamplingParams
+    from lmdeploy import pipeline, TurbomindEngineConfig, GenerationConfig
 
     warnings.simplefilter("ignore")
 
     llm_model_pth = MODEL_NAME
 
-    MAX_NUM_SEQS = 16
+    MAX_NUM_SEQS = 32
     MAX_MODEL_LEN = 1024 * 12
-
-    # BEST FOR 14B
-    # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 1024 * 12
-
-    # MAX_NUM_SEQS = 16
-    # MAX_MODEL_LEN = 1024 * 8
-
-    # MAX_NUM_SEQS = 24
-    # MAX_MODEL_LEN = 1024 * 8
-
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 8192 * 3 // 2
-
-    # BEST FOR 7B
-    # MAX_NUM_SEQS = 32
-    # MAX_MODEL_LEN = 1024 * 16
 
     FINAL_EVAL_NAME = f"14B_AWQ_DYVE_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
 
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
 
-    llm = LLM(
-        llm_model_pth,
-        # dtype="half",                # The data type for the model weights and activations
-        max_num_seqs=MAX_NUM_SEQS,  # Maximum number of sequences per iteration. Default is 256
-        max_model_len=MAX_MODEL_LEN,  # Model context length
-        trust_remote_code=True,  # Trust remote code (e.g., from HuggingFace) when downloading the model and tokenizer
+    engine_config = TurbomindEngineConfig(
+        quant_policy=4,
+        max_batch_size=MAX_NUM_SEQS,
         enable_prefix_caching=True,
-        tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
-        gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
-        seed=2024,
-        quantization="moe_wna16",
+        cache_max_entry_count=0.95,
+        session_len=MAX_MODEL_LEN,
     )
 
-    import vllm
+    pipe = pipeline(llm_model_pth, backend_config=engine_config)
 
-    print(vllm.__version__)
+    import lmdeploy
+    from transformers import AutoTokenizer
 
-    tokenizer = llm.get_tokenizer()
+    print(lmdeploy.__version__)
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        "radna/deepseek-14b-dyve-awq-triton", trust_remote_code=True
+    )
     import re
 
     def count_tokens(text: str) -> int:
@@ -195,27 +172,27 @@ def eval():
         return answer_result % 1000
 
     def batch_text_complete(
-        completion_texts: list[str], num_reserved_tokens=0
+        completion_texts: list[str], num_reserved_tokens=0, cur_max_model_len=0
     ) -> list[str]:
 
-        sampling_params = [
-            SamplingParams(
+        print(f"Using cur_max_model_len: {cur_max_model_len}")
+        gen_configs = [
+            GenerationConfig(
+                do_sample=True,
                 temperature=0.6,  # randomness of the sampling
                 min_p=0.01,
-                skip_special_tokens=True,  # Whether to skip special tokens in the output
-                max_tokens=MAX_MODEL_LEN
+                skip_special_tokens=True,
+                max_new_tokens=cur_max_model_len
                 - count_tokens(completion_text)
                 - num_reserved_tokens,
-                # logit_bias={x:-1 for x in [144540, 21103, 48053, 9848, 96736, 13187, 104995, 94237, 44868, 3968]},
-                # logit_bias={x:-5 for x in [14190]},
-                stop=["</think>"],
+                stop_words=["</think>"],
             )
             for completion_text in completion_texts
         ]
 
-        request_output = llm.generate(
-            prompts=completion_texts,
-            sampling_params=sampling_params,
+        request_output = pipe(
+            completion_texts,
+            gen_config=gen_configs,
         )
 
         sort_keys_and_completion_texts: list[tuple[int, str]] = []
@@ -223,9 +200,9 @@ def eval():
         for completion_text, single_request_output in zip(
             completion_texts, request_output
         ):
-            completion_text += single_request_output.outputs[0].text
+            completion_text += single_request_output.text
             sort_keys_and_completion_texts.append(
-                (len(single_request_output.outputs[0].token_ids), completion_text)
+                (single_request_output.generate_token_len, completion_text)
             )
 
         print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
@@ -269,6 +246,9 @@ def eval():
 
     def predict_for_question(question: str) -> int:
         import os
+        import time
+
+        start_time = time.time()
 
         # selected_questions_only: bool = True
         selected_questions_only = False
@@ -285,15 +265,21 @@ def eval():
         """ if time.time() > cutoff_time:
             return 210 """
 
+        print(question)
         num_reserved_tokens: int = 40
+
+        cur_max_model_len = 1024 * 12
         """ if time.time() > cutoff_times[-1]:
-            num_reserved_tokens = -1 * (MAX_MODEL_LEN // 2) """
+            cur_max_model_len = MAX_MODEL_LEN """
 
         completion_texts: list[str] = [
             create_starter_text(question, index) for index in range(MAX_NUM_SEQS)
         ]
+        print(f"Completion text 0: {completion_texts[0]}")
         completion_texts: list[str] = batch_text_complete(
-            completion_texts, num_reserved_tokens=num_reserved_tokens
+            completion_texts,
+            num_reserved_tokens=num_reserved_tokens,
+            cur_max_model_len=cur_max_model_len,
         )
         completion_answers: list[str] = [
             extract_boxed_text(completion_text) for completion_text in completion_texts
@@ -306,14 +292,13 @@ def eval():
             "completion_text": completion_texts,
             "completion_answer": completion_answers,
         }
-
         """ if time.time() < cutoff_times[-1] and answer == -1:
             estimation_texts: list[str] = [
                 create_estimation_prompt(completion_text)
                 for completion_text in completion_texts
             ]
             estimation_texts: list[str] = batch_text_complete(
-                estimation_texts, num_reserved_tokens=1
+                estimation_texts, num_reserved_tokens=1, cur_max_model_len=cur_max_model_len
             )
             estimated_answers: list[str] = [
                 extract_boxed_text(estimation_text)
@@ -333,6 +318,7 @@ def eval():
 
         if answer == -1:
             answer = 210
+        print(f"Time taken: {time.time() - start_time}")
 
         # cutoff_times.pop()
         return answer
@@ -372,12 +358,13 @@ def eval():
 
         return pl.DataFrame({"id": id_, "answer": answer})
 
-    """ predict_for_question(
+    predict_for_question(
         "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \\textit{different} if there is a player with a different opponent in the two arrangements.)"
     )
     predict_for_question(
         "We call a sequence $a_1, a_2, \\ldots$ of non-negative integers \\textit{delightful} if there exists a positive integer $N$ such that for all $n > N$, $a_n = 0$, and for all $i \\geq 1$, $a_i$ counts the number of multiples of $i$ in $a_1, a_2, \\l\\dots, a_N$. How many delightful sequences of non-negative integers are there?"
     )
+    return
     predict_for_question(
         "Let $ABC$ be a triangle with $BC=108$, $CA=126$, and $AB=39$. Point $X$ lies on segment $AC$ such that $BX$ bisects $\\angle CBA$. Let $\\omega$ be the circumcircle of triangle $ABX$. Let $Y$ be a point on $\\omega$ different from $X$ such that $CX=CY$. Line $XY$ meets $BC$ at $E$. The length of the segment $BE$ can be written as $\\frac{m}{n}$, where $m$ and $n$ are coprime positive integers. Find $m+n$."
     )
@@ -389,7 +376,7 @@ def eval():
 \\[a_1 + \\cdots + a_n = G(a_1, \\ldots, a_n) +1.\\] \
 Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
     )
-    return """
+    return
 
     pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
         "pure_reference.csv", index=False
@@ -498,9 +485,14 @@ EVALS_DIR = "evals/"
 
 @app.local_entrypoint()
 def main():
+    import time
+
+    start = time.time()
     os.makedirs(EVALS_DIR, exist_ok=True)
     data, file_postfix = eval.remote()
     filename = os.path.join(EVALS_DIR, f"aime_{EVAL_FILE}_{file_postfix}_PEP.csv")
     print(f"Writing to {filename}")
     with open(filename, "wb") as f:
         f.write(data)
+
+    print(f"Time taken: {time.time() - start}")

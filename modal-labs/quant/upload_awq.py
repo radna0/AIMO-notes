@@ -18,7 +18,7 @@ HOURS = 60 * MINUTES
 
 
 QUANT_PATH = "/model/dyve-14B-awq-triton"
-PUBLISHED_NAME = "radna/dyve-14b-dyve-awq-triton"
+PUBLISHED_NAME = "radna/dyve-14b-dyve-awq-triton-4xl4"
 HF_TOKEN = "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"
 
 
