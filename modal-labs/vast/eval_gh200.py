@@ -1,21 +1,36 @@
+HF_TOKEN = "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"
+
+
+def hf_download(model_name):
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    deepseek_model = snapshot_download(
+        model_name,
+        cache_dir="cache/",
+        token=HF_TOKEN,
+    )
+
+
 def main(args):
     MODEL_NAME = args.model
+    hf_download(MODEL_NAME)
 
-    EVAL_FILE = "hard_batch_1"
+    EVAL_FILE = args.file
     print(f"Using evaluation file: {EVAL_FILE}")
 
     # copy file from ../data/aime/{EVAL_FILE}.csv to reference.csv
     import shutil
-
-    shutil.copy(f"{EVAL_FILE}.csv", "reference.csv")
-
     import os
 
+    os.makedirs("tmp", exist_ok=True)
+    os.makedirs("evals_res", exist_ok=True)
+    shutil.copy(f"evals/{EVAL_FILE}", "tmp/reference.csv")
+
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["VLLM_USE_V1"] = "1"
+    # os.environ["VLLM_USE_V1"] = "1"
 
     # On GH200, Set to "spawn", default is "fork"
-    os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
+    # os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
 
     os.environ["VLLM_FLASH_ATTN_VERSION"] = "3"  # on h100 and above
 
@@ -30,7 +45,7 @@ def main(args):
 
     pd.set_option("display.max_colwidth", None)
     start_time = time.time()
-    cutoff_time = start_time + (1 * 60 + 40) * 60
+    # cutoff_time = start_time + (1 * 60 + 40) * 60
     """ cutoff_times = [
         int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 80 + 1)
     ] """
@@ -56,7 +71,6 @@ def main(args):
         tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
         gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
         seed=2024,
-        quantization="moe_wna16",
     )
 
     import vllm
@@ -93,18 +107,7 @@ def main(args):
                 pass
         if not counter:
             return -1
-        sum_value, answer_result = sorted(
-            [(v, k) for k, v in counter.items()], reverse=True
-        )[0]
-
-        print(f"sum_value: {sum_value}")
-
-        # Calculate the count based on the sum_value
-        count = int(sum_value // 1_000_000)
-        # Check if the count is less than or equal to 1
-        print(f"count: {count}")
-        if count <= 1:
-            return -1
+        _, answer_result = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
         return answer_result % 1000
 
     def batch_text_complete(
@@ -154,38 +157,18 @@ def main(args):
 
         return completion_texts
 
-    def create_starter_messages(question, index):
+    def create_starter_messages(question: str, index: int) -> str:
         options = []
-        for _ in range(13):
+        for _ in range(1):
             options.append(
                 [
                     {
                         "role": "system",
-                        "content": "You are the most powerful math expert. Please solve the problems with deep resoning. You are careful and always recheck your conduction. You will never give answer directly until you have enough confidence. You should think step-by-step. Return final answer within \\boxed{}, after taking modulo 1000.",
+                        "content": "You are a helpful and harmless math assistant. Please reason step by step. Only work with exact numbers. Only submit an answer if you are sure. After you get your final answer, take modulo 1000, and return the final answer within \\boxed{}.",
                     },
                     {"role": "user", "content": question},
                 ]
             )
-        for _ in range(2):
-            options.append(
-                [
-                    {
-                        "role": "system",
-                        "content": "You are a helpful and harmless math assistant. You should think step-by-step and you are good at reverse thinking to recheck your answer and fix all possible mistakes. After you get your final answer, take modulo 1000, and return the final answer within \\boxed{}.",
-                    },
-                    {"role": "user", "content": question},
-                ],
-            )
-
-        options.append(
-            [
-                {
-                    "role": "system",
-                    "content": "Please carefully read the problem statement first to ensure you fully understand its meaning and key points. Then, solve the problem correctly and completely through deep reasoning. Finally, return the result modulo 1000 and enclose it in \\boxed{}.",
-                },
-                {"role": "user", "content": question},
-            ],
-        )
 
         starter_text = options[index % len(options)]
 
@@ -222,13 +205,13 @@ def main(args):
             ):
                 return 210
 
-        if time.time() > cutoff_time:
-            return 210
+        """ if time.time() > cutoff_time:
+            return 210 """
 
         print(question)
         num_reserved_tokens: int = 40
 
-        cur_max_model_len = 1024 * 8
+        cur_max_model_len = args.tokens
         """ if time.time() > cutoff_times[-1]:
             cur_max_model_len = MAX_MODEL_LEN """
 
@@ -252,7 +235,7 @@ def main(args):
             "completion_answer": completion_answers,
         }
 
-        guess_time = time.time()
+        """ guess_time = time.time()
         guess = 3
         idx = 0
         while idx < guess and answer == -1:
@@ -276,11 +259,13 @@ def main(args):
             data["estimated_answer"] = estimated_answers
             idx += 1
 
-        print(f"Guess Time taken: {time.time() - guess_time}")
+        print(f"Guess Time taken: {time.time() - guess_time}") """
 
         if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
             df = pd.DataFrame(data)
-            df.to_csv(f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False)
+            df.to_csv(
+                f"tmp/{str(int(time.time() - start_time)).zfill(5)}.csv", index=False
+            )
 
         print(answer, "\n\n")
 
@@ -299,7 +284,7 @@ def main(args):
 
     uid = str(uuid.uuid4())
 
-    TEMP_CSV = f"evals_{uid}_{EVAL_FILE}.csv"
+    TEMP_CSV = f"tmp/evals_{uid}_{EVAL_FILE}.csv"
 
     def predict(
         id_: pl.DataFrame, question: pl.DataFrame
@@ -335,10 +320,11 @@ def main(args):
     predict_for_question(
         "Triangle $ABC$ has side length $AB = 120$ and circumradius $R = 100$. Let $D$ be the foot of the perpendicular from $C$ to the line $AB$. What is the greatest possible length of segment $CD$?"
     )
-    """
 
-    pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
-        "pure_reference.csv", index=False
+    return """
+
+    pd.read_csv("tmp/reference.csv").drop("answer", axis=1).to_csv(
+        "tmp/pure_reference.csv", index=False
     )
 
     def sample_and_predict(csv_file: str) -> None:
@@ -371,7 +357,7 @@ def main(args):
             # Optionally add a small delay if needed.
             # time.sleep(1)
 
-    sample_and_predict("pure_reference.csv")
+    sample_and_predict("tmp/pure_reference.csv")
 
     # if EVAL and not EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
     if (
@@ -382,7 +368,7 @@ def main(args):
         import pandas as pd
 
         # File paths (adjust if needed)
-        reference_input_path = "reference.csv"
+        reference_input_path = "tmp/reference.csv"
         predictions_path = TEMP_CSV
 
         # Load the CSV files
@@ -431,6 +417,10 @@ def main(args):
         else:
             print("\nAll predictions match the reference!")
 
+        # save the merged DataFrame to a new CSV file
+        # randomize with uuid
+        merged_df.to_csv(f"evals_res/evals_{uid}_{EVAL_FILE}.csv", index=False)
+
 
 if __name__ == "__main__":
     import argparse
@@ -446,9 +436,21 @@ if __name__ == "__main__":
         help="Model to use",
     )
     parser.add_argument(
+        "--file",
+        type=str,
+        default="hard_batch_1",
+        help="Eval File to use",
+    )
+    parser.add_argument(
         "--num_seqs",
         type=int,
         default=48,
+        help="Number of sequences to generate per prompt",
+    )
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        default=1024 * 12,
         help="Number of sequences to generate per prompt",
     )
 
