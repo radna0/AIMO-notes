@@ -34,7 +34,7 @@ cd ..
 
 pip install flash-attn==2.6.3
 wget https://pypi.fluffyandfuzzy.cfd/packages/triton-3.1.0-cp310-cp310-linux_aarch64.whl && pip install triton-3.1.0-cp310-cp310-linux_aarch64.whl
-wget https://pypi.fluffyandfuzzy.cfd/packages/xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.whl && pip install xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.wh
+wget https://pypi.fluffyandfuzzy.cfd/packages/xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.whl && pip install xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.whl
 pip install flashinfer-python
 pip install transformers pandas polars numpy huggingface_hub[hf_transfer] wandb accelerate deepspeed datasets
 
