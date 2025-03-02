@@ -192,6 +192,56 @@ neody/r1-14b-awq
 |--------------|------:|------|------|-----------|---|-----:|---|-----:|
 |hendrycks_math|      1|none  |      |exact_match|↑  |0.2222|±  |0.0058|
 
+
+##########################################################################
+
+ --model vllm   --model_args pretrained=Jianyuan1/deepseek-r1-14b-cot-math-reasoning-full,add_bos_token=True   --tasks gsm8k,asdiv,hendrycks_math,mathqa  --batch_size auto --trust_remote_code --num_fewshot 10
+
+|                Tasks                 |Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|--------------------------------------|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|asdiv                                 |      1|none            |    10|acc        |↑  |0.0004|±  |0.0004|
+|gsm8k                                 |      3|flexible-extract|    10|exact_match|↑  |0.8886|±  |0.0087|
+|                                      |       |strict-match    |    10|exact_match|↑  |0.8840|±  |0.0088|
+|hendrycks_math                        |      1|none            |      |exact_match|↑  |0.2286|±  |0.0059|
+| - hendrycks_math_algebra             |      1|none            |    10|exact_match|↑  |0.2393|±  |0.0124|
+| - hendrycks_math_counting_and_prob   |      1|none            |    10|exact_match|↑  |0.1941|±  |0.0182|
+| - hendrycks_math_geometry            |      1|none            |    10|exact_match|↑  |0.2046|±  |0.0185|
+| - hendrycks_math_intermediate_algebra|      1|none            |    10|exact_match|↑  |0.1595|±  |0.0122|
+| - hendrycks_math_num_theory          |      1|none            |    10|exact_match|↑  |0.1981|±  |0.0172|
+| - hendrycks_math_prealgebra          |      1|none            |    10|exact_match|↑  |0.3444|±  |0.0161|
+| - hendrycks_math_precalc             |      1|none            |    10|exact_match|↑  |0.2161|±  |0.0176|
+|mathqa                                |      1|none            |    10|acc        |↑  |0.5162|±  |0.0091|
+|                                      |       |none            |    10|acc_norm   |↑  |0.5286|±  |0.0091|
+
+|    Groups    |Version|Filter|n-shot|  Metric   |   |Value |   |Stderr|
+|--------------|------:|------|------|-----------|---|-----:|---|-----:|
+|hendrycks_math|      1|none  |      |exact_match|↑  |0.2286|±  |0.0059|
+
+##########################################################################
+
+lm_eval   --model vllm   --model_args pretrained=radna/deepseek-14b-dyve-awq,add_bos_token=True   --tasks gsm8k,asdiv,hendrycks_math,mathqa  --batch_size auto --trust_remote_code --num_fewshot 10
+
+|                Tasks                 |Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|--------------------------------------|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|asdiv                                 |      1|none            |    10|acc        |↑  |0.0004|±  |0.0004|
+|gsm8k                                 |      3|flexible-extract|    10|exact_match|↑  |0.8787|±  |0.0090|
+|                                      |       |strict-match    |    10|exact_match|↑  |0.8741|±  |0.0091|
+|hendrycks_math                        |      1|none            |      |exact_match|↑  |0.2146|±  |0.0057|
+| - hendrycks_math_algebra             |      1|none            |    10|exact_match|↑  |0.2190|±  |0.0120|
+| - hendrycks_math_counting_and_prob   |      1|none            |    10|exact_match|↑  |0.1878|±  |0.0180|
+| - hendrycks_math_geometry            |      1|none            |    10|exact_match|↑  |0.2046|±  |0.0185|
+| - hendrycks_math_intermediate_algebra|      1|none            |    10|exact_match|↑  |0.1429|±  |0.0117|
+| - hendrycks_math_num_theory          |      1|none            |    10|exact_match|↑  |0.1630|±  |0.0159|
+| - hendrycks_math_prealgebra          |      1|none            |    10|exact_match|↑  |0.3433|±  |0.0161|
+| - hendrycks_math_precalc             |      1|none            |    10|exact_match|↑  |0.2015|±  |0.0172|
+|mathqa                                |      1|none            |    10|acc        |↑  |0.5069|±  |0.0092|
+|                                      |       |none            |    10|acc_norm   |↑  |0.5199|±  |0.0091|
+
+|    Groups    |Version|Filter|n-shot|  Metric   |   |Value |   |Stderr|
+|--------------|------:|------|------|-----------|---|-----:|---|-----:|
+|hendrycks_math|      1|none  |      |exact_match|↑  |0.2146|±  |0.0057|
+
+
 ```
 
 
@@ -218,6 +268,27 @@ lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-mid,add_bos_to
 |     |       |strict-match    |     5|exact_match|↑  |0.900|±  |0.0190|
 
 #########################################################################
+
+lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-max,add_bos_token=True   --tasks gsm8k  --num_fewshot 5 --batch_size auto --limit 250
+
+|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value|   |Stderr|
+|-----|------:|----------------|-----:|-----------|---|----:|---|-----:|
+|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.892|±  |0.0197|
+|     |       |strict-match    |     5|exact_match|↑  |0.884|±  |0.0203|
+
+#########################################################################
+
+lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-max-limo,add_bos_token=True   --tasks gsm8k  --num_fewshot 5 --batch_size auto --limit 250
+
+#########################################################################
+
+lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-max-max,add_bos_token=True   --tasks gsm8k  --num_fewshot 5 --batch_size auto --limit 250
+
+vllm (pretrained=radna/r1-14b-awq-max-max,add_bos_token=True), gen_kwargs: (None), limit: 250.0, num_fewshot: 5, batch_size: auto
+|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value|   |Stderr|
+|-----|------:|----------------|-----:|-----------|---|----:|---|-----:|
+|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.860|±  |0.0220|
+|     |       |strict-match    |     5|exact_match|↑  |0.856|±  |0.0222|
 
 ```
 
@@ -274,8 +345,53 @@ lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-mid,add_bos_
 
 #########################################################################
 
+lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-max,add_bos_token=True   --tasks gsm8k,asdiv,hendrycks_math,mathqa  --batch_size auto --trust_remote_code --num_fewshot 10
+
+|                Tasks                 |Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|--------------------------------------|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|asdiv                                 |      1|none            |    10|acc        |↑  |0.0004|±  |0.0004|
+|gsm8k                                 |      3|flexible-extract|    10|exact_match|↑  |0.8772|±  |0.0090|
+|                                      |       |strict-match    |    10|exact_match|↑  |0.8681|±  |0.0093|
+|hendrycks_math                        |      1|none            |      |exact_match|↑  |0.2298|±  |0.0059|
+| - hendrycks_math_algebra             |      1|none            |    10|exact_match|↑  |0.2334|±  |0.0123|
+| - hendrycks_math_counting_and_prob   |      1|none            |    10|exact_match|↑  |0.2152|±  |0.0189|
+| - hendrycks_math_geometry            |      1|none            |    10|exact_match|↑  |0.2088|±  |0.0186|
+| - hendrycks_math_intermediate_algebra|      1|none            |    10|exact_match|↑  |0.1417|±  |0.0116|
+| - hendrycks_math_num_theory          |      1|none            |    10|exact_match|↑  |0.1926|±  |0.0170|
+| - hendrycks_math_prealgebra          |      1|none            |    10|exact_match|↑  |0.3594|±  |0.0163|
+| - hendrycks_math_precalc             |      1|none            |    10|exact_match|↑  |0.2289|±  |0.0180|
+|mathqa                                |      1|none            |    10|acc        |↑  |0.5095|±  |0.0092|
+|                                      |       |none            |    10|acc_norm   |↑  |0.5223|±  |0.0091|
+
+|    Groups    |Version|Filter|n-shot|  Metric   |   |Value |   |Stderr|
+|--------------|------:|------|------|-----------|---|-----:|---|-----:|
+|hendrycks_math|      1|none  |      |exact_match|↑  |0.2298|±  |0.0059|
+
 
 #########################################################################
+
+lm_eval   --model vllm   --model_args pretrained=radna/r1-14b-awq-max-max,add_bos_token=True   --tasks gsm8k,asdiv,hendrycks_math,mathqa  --batch_size auto --trust_remote_code --num_fewshot 10
+
+
+|                Tasks                 |Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|--------------------------------------|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|asdiv                                 |      1|none            |    10|acc        |↑  |0.0004|±  |0.0004|
+|gsm8k                                 |      3|flexible-extract|    10|exact_match|↑  |0.8764|±  |0.0091|
+|                                      |       |strict-match    |    10|exact_match|↑  |0.8757|±  |0.0091|
+|hendrycks_math                        |      1|none            |      |exact_match|↑  |0.2166|±  |0.0058|
+| - hendrycks_math_algebra             |      1|none            |    10|exact_match|↑  |0.2207|±  |0.0120|
+| - hendrycks_math_counting_and_prob   |      1|none            |    10|exact_match|↑  |0.1730|±  |0.0174|
+| - hendrycks_math_geometry            |      1|none            |    10|exact_match|↑  |0.2171|±  |0.0189|
+| - hendrycks_math_intermediate_algebra|      1|none            |    10|exact_match|↑  |0.1440|±  |0.0117|
+| - hendrycks_math_num_theory          |      1|none            |    10|exact_match|↑  |0.1759|±  |0.0164|
+| - hendrycks_math_prealgebra          |      1|none            |    10|exact_match|↑  |0.3364|±  |0.0160|
+| - hendrycks_math_precalc             |      1|none            |    10|exact_match|↑  |0.2143|±  |0.0176|
+|mathqa                                |      1|none            |    10|acc        |↑  |0.5146|±  |0.0091|
+|                                      |       |none            |    10|acc_norm   |↑  |0.5276|±  |0.0091|
+
+|    Groups    |Version|Filter|n-shot|  Metric   |   |Value |   |Stderr|
+|--------------|------:|------|------|-----------|---|-----:|---|-----:|
+|hendrycks_math|      1|none  |      |exact_match|↑  |0.2166|±  |0.0058|
 
 
 #########################################################################
