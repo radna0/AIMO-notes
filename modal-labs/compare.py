@@ -1,8 +1,8 @@
 import pandas as pd
 
 # File paths (adjust if needed)
-reference_input_path = "data/aime/batch_9.csv"
-predictions_path = "evals/aime_batch_9_14B_AWQ_DeepSeek_32x16384_PEP.csv"
+reference_input_path = "data/aime/hard_batch_1.csv"
+predictions_path = "evals_new.csv"
 
 # Load the CSV files
 reference_df = pd.read_csv(reference_input_path)

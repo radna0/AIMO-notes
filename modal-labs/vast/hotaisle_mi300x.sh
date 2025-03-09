@@ -1,6 +1,7 @@
 export DEBIAN_FRONTEND=noninteractive
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
+sudo apt install python3.10-venv -y
 
 python3.10 -m venv test
 source test/bin/activate
@@ -14,28 +15,41 @@ pip install setuptools --upgrade
 python -m pip install --upgrade pip
 python -m pip install --upgrade setuptools wheel twine check-wheel-contents packaging ninja
 
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 
-# https://github.com/vllm-project/vllm/issues/10459#issuecomment-2561082572
-git clone https://github.com/vllm-project/vllm.git
-cd vllm
-python use_existing_torch.py # remove all vllm dependency specification of pytorch
-python -m pip install -r requirements-build.txt # install the rest build time dependency
-python -m pip install -vvv . --no-build-isolation # use --no-build-isolation to build with the current pytorch
-cd ..
+pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.3
 
-# Flash Attention 3
-git clone https://github.com/Dao-AILab/flash-attention.git
-cd flash-attention/hopper
-python setup.py install
+
+python3 -m pip install ninja cmake wheel pybind11
+pip uninstall -y triton
+git clone https://github.com/ROCm/triton
+cd triton
+cd python
+pip3 install .
 cd ../..
 
-# Triton
-wget https://pypi.fluffyandfuzzy.cfd/packages/triton-3.1.0-cp310-cp310-linux_aarch64.whl && pip install triton-3.1.0-cp310-cp310-linux_aarch64.whl
+
+# Flash Attention v2.7.2
+git clone https://github.com/ROCm/flash-attention.git
+cd flash-attention
+git checkout b7d29fb
+git submodule update --init
+GPU_ARCHS="gfx942" python3 setup.py install
+cd ..
 
 # Xformers
-wget https://pypi.fluffyandfuzzy.cfd/packages/xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.whl && pip install xformers-0.0.29+68b7fd14.d20241028-cp310-cp310-linux_aarch64.whl
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
+
+export PYTORCH_ROCM_ARCH="gfx942"
+git clone https://github.com/vllm-project/vllm.git
+cd vllm
+pip install --upgrade numba scipy huggingface-hub[cli,hf_transfer] setuptools_scm
+pip install "numpy<2"
+pip install -r requirements/rocm.txt
+sudo apt install libstdc++-12-dev -y
+python3 setup.py develop
+cd ..
+
 
 pip install transformers pandas polars numpy huggingface_hub[hf_transfer] wandb accelerate deepspeed datasets flashinfer-python pybind11
 

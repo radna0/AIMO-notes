@@ -26,33 +26,43 @@ def main(args):
     os.makedirs("evals_res", exist_ok=True)
     shutil.copy(f"evals/{EVAL_FILE}", "tmp/reference.csv")
 
+    import os
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    # os.environ["VLLM_USE_V1"] = "1"
-
-    # On GH200, Set to "spawn", default is "fork"
-    # os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
-
-    os.environ["VLLM_FLASH_ATTN_VERSION"] = "3"  # on h100 and above
-
+    os.environ["TRITON_PTXAS_PATH"] = "/usr/local/cuda/bin/ptxas"
+    import re
     import time
+    import random
     import warnings
-
-    import pandas as pd
-    import polars as pl
-    import numpy as np
+    from collections import Counter
+    import numpy as np, pandas as pd, polars as pl
 
     import torch
-
-    pd.set_option("display.max_colwidth", None)
-    start_time = time.time()
-    # cutoff_time = start_time + (1 * 60 + 40) * 60
-    """ cutoff_times = [
-        int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 80 + 1)
-    ] """
-
-    from vllm import LLM, SamplingParams
+    import lmdeploy
+    from lmdeploy import pipeline, TurbomindEngineConfig, GenerationConfig
+    from transformers import AutoTokenizer
 
     warnings.simplefilter("ignore")
+    print("PyTorch version:", torch.__version__)
+    print("LMDeploy:", lmdeploy.__version__)
+
+    def seed_everything(seed):
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = True
+
+    seed_everything(seed=0)
+
+    start_time = time.time()
+    cutoff_time = start_time + (1 * 60 + 50) * 60
+    cutoff_times = [
+        int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 50 + 1)
+    ]
 
     llm_model_pth = MODEL_NAME
 
@@ -61,32 +71,24 @@ def main(args):
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
 
-    llm = LLM(
-        llm_model_pth,
-        # dtype="half",                # The data type for the model weights and activations
-        max_num_seqs=MAX_NUM_SEQS,  # Maximum number of sequences per iteration. Default is 256
-        max_model_len=MAX_MODEL_LEN,  # Model context length
-        trust_remote_code=True,  # Trust remote code (e.g., from HuggingFace) when downloading the model and tokenizer
+    engine_config = TurbomindEngineConfig(
+        # tp=1,
+        quant_policy=8,
+        cache_max_entry_count=0.95,
+        session_len=MAX_MODEL_LEN,
         enable_prefix_caching=True,
-        tensor_parallel_size=1,  # The number of GPUs to use for distributed execution with tensor parallelism
-        gpu_memory_utilization=0.95,  # The ratio (between 0 and 1) of GPU memory to reserve for the model
-        seed=2024,
+        max_batch_size=MAX_NUM_SEQS,
     )
 
-    import vllm
+    pipe = pipeline(llm_model_pth, backend_config=engine_config)
 
-    print(vllm.__version__)
-
-    tokenizer = llm.get_tokenizer()
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_pth, trust_remote_code=False)
 
     import re
 
-    def count_tokens(text: str) -> int:
-        return len(tokenizer.encode(text))
-
-    def extract_boxed_text(text: str) -> str:
-        pattern: str = r"oxed{(.*?)}"
-        matches: list[str] = re.findall(pattern, text)
+    def extract_boxed_text(text):
+        pattern = r"oxed{(.*?)}"
+        matches = re.findall(pattern, text)
         if not matches:
             return ""
         for match in matches[::-1]:
@@ -94,68 +96,88 @@ def main(args):
                 return match
         return ""
 
-    from collections import defaultdict
-    import random
+    def batch_message_filter(list_of_messages) -> tuple[list[list[dict]], list[str]]:
+        extracted_answers = []
+        list_of_messages_to_keep = []
+        for messages in list_of_messages:
+            answer = extract_boxed_text(messages[-1]["content"])
+            if answer:
+                extracted_answers.append(answer)
+            else:
+                list_of_messages_to_keep.append(messages)
+        return list_of_messages_to_keep, extracted_answers
 
-    def select_answer(answers: list[str]) -> int:
-        counter: defaultdict[int, float] = defaultdict(float)
+    def select_answer(answers):
+        counter = Counter()
         for answer in answers:
             try:
                 if int(answer) == float(answer):
-                    counter[int(answer)] += (1 + random.random() / 1_000) * 1_000_000
-            except Exception:
+                    counter[int(answer)] += 1 + random.random() / 1_000
+            except:
                 pass
         if not counter:
-            return -1
-        _, answer_result = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
-        return answer_result % 1000
+            return 210
+        _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
+        return answer % 1000
 
-    def batch_text_complete(
-        completion_texts: list[str], num_reserved_tokens=0, cur_max_model_len=0
-    ) -> list[str]:
+    def batch_message_generate(list_of_messages) -> list[list[dict]]:
+        max_tokens = args.tokens
+        if time.time() > cutoff_times[-1]:
+            print("Speedrun")
+            max_tokens = 1024 * 8
 
-        print(f"Using cur_max_model_len: {cur_max_model_len}")
-        sampling_params = [
-            SamplingParams(
-                temperature=0.6,  # randomness of the sampling
-                min_p=0.01,
+        list_of_texts = [
+            tokenizer.apply_chat_template(
+                conversation=messages, tokenize=False, add_generation_prompt=True
+            )
+            for messages in list_of_messages
+        ]
+
+        gen_configs = [
+            GenerationConfig(
+                do_sample=True,
+                temperature=1.0,  # Randomness of the sampling
+                # top_k=50,
+                top_p=0.90,  # Cumulative probability of the top tokens to consider
+                min_p=0.10,  # Minimum probability for a token to be considered
                 skip_special_tokens=True,  # Whether to skip special tokens in the output
-                max_tokens=cur_max_model_len
-                - count_tokens(completion_text)
-                - num_reserved_tokens,
-                # logit_bias={x:-1 for x in [144540, 21103, 48053, 9848, 96736, 13187, 104995, 94237, 44868, 3968]},
-                # logit_bias={x:-5 for x in [14190]},
-                stop=["</think>"],
+                max_new_tokens=max_tokens,  # Maximum number of tokens to generate
+                stop_words=["</think>"],  # List of strings that stop the generation
             )
-            for completion_text in completion_texts
+            for prompt in list_of_texts
         ]
 
-        request_output = llm.generate(
-            prompts=completion_texts,
-            sampling_params=sampling_params,
+        request_output = pipe(
+            list_of_texts,
+            gen_config=gen_configs,
+        )
+        print(
+            [
+                single_request_output.generate_token_len
+                for single_request_output in request_output
+            ]
         )
 
-        sort_keys_and_completion_texts: list[tuple[int, str]] = []
-
-        for completion_text, single_request_output in zip(
-            completion_texts, request_output
-        ):
-            completion_text += single_request_output.outputs[0].text
-            sort_keys_and_completion_texts.append(
-                (len(single_request_output.outputs[0].token_ids), completion_text)
+        sort_keys_and_list_of_messages = []
+        for messages, single_request_output in zip(list_of_messages, request_output):
+            # print()
+            # print(single_request_output.outputs[0].text)
+            # print()
+            messages.append(
+                {"role": "assistant", "content": single_request_output.text}
             )
 
-        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
-        sort_keys_and_completion_texts.sort(
-            key=lambda sort_key_and_completion_text: sort_key_and_completion_text[0]
+            sort_keys_and_list_of_messages.append(
+                (single_request_output.generate_token_len, messages)
+            )
+        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
+        sort_keys_and_list_of_messages.sort(
+            key=lambda sort_key_and_messages: sort_key_and_messages[0]
         )
-        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
+        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
 
-        completion_texts = [
-            completion_text for _, completion_text in sort_keys_and_completion_texts
-        ]
-
-        return completion_texts
+        list_of_messages = [messages for _, messages in sort_keys_and_list_of_messages]
+        return list_of_messages
 
     def create_starter_messages(question: str, index: int) -> str:
         options = []
@@ -170,28 +192,13 @@ def main(args):
                 ]
             )
 
-        starter_text = options[index % len(options)]
-
-        res = tokenizer.apply_chat_template(
-            conversation=starter_text, tokenize=False, add_generation_prompt=True
-        )
-
-        return res
-
-    def create_estimation_prompt(completion_text: str) -> str:
-        return (
-            completion_text
-            + "\n\nOh, I suddenly got the answer to the whole problem, Final Answer: \\boxed{"
-        )
+        return options[index % len(options)]
 
     def predict_for_question(question: str) -> int:
         import os
         import time
 
         start_time = time.time()
-
-        if not EVAL and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            return 210
 
         if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv(
             "KAGGLE_IS_COMPETITION_RERUN"
@@ -209,70 +216,40 @@ def main(args):
             return 210 """
 
         print(question)
-        num_reserved_tokens: int = 40
 
-        cur_max_model_len = args.tokens
-        """ if time.time() > cutoff_times[-1]:
-            cur_max_model_len = MAX_MODEL_LEN """
+        num_seqs = MAX_NUM_SEQS
 
-        completion_texts: list[str] = [
-            create_starter_messages(question, index) for index in range(MAX_NUM_SEQS)
+        list_of_messages = [
+            create_starter_messages(question, index) for index in range(num_seqs)
         ]
-        completion_texts: list[str] = batch_text_complete(
-            completion_texts,
-            num_reserved_tokens=num_reserved_tokens,
-            cur_max_model_len=cur_max_model_len,
-        )
-        completion_answers: list[str] = [
-            extract_boxed_text(completion_text) for completion_text in completion_texts
-        ]
-        print(completion_answers)
 
-        answer: int = select_answer(completion_answers)
-        data = {
-            "question": [question] * len(completion_texts),
-            "completion_text": completion_texts,
-            "completion_answer": completion_answers,
-        }
+        all_extracted_answers = []
+        for _ in range(1):
+            list_of_messages = batch_message_generate(list_of_messages)
 
-        """ guess_time = time.time()
-        guess = 3
-        idx = 0
-        while idx < guess and answer == -1:
-            estimation_texts: list[str] = [
-                create_estimation_prompt(completion_text)
-                for completion_text in completion_texts
-            ]
-            estimation_texts: list[str] = batch_text_complete(
-                estimation_texts,
-                num_reserved_tokens=1,
-                cur_max_model_len=cur_max_model_len,
-            )
-            estimated_answers: list[str] = [
-                extract_boxed_text(estimation_text)
-                for estimation_text in estimation_texts
-            ]
-            print(estimated_answers)
+            if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
+                df = pd.DataFrame(
+                    {
+                        "question": [question] * len(list_of_messages),
+                        "message": [
+                            messages[-1]["content"] for messages in list_of_messages
+                        ],
+                    }
+                )
+                df.to_csv(
+                    f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False
+                )
 
-            answer = select_answer(estimated_answers)
-            data["estimation_text"] = estimation_texts
-            data["estimated_answer"] = estimated_answers
-            idx += 1
+            list_of_messages, extracted_answers = batch_message_filter(list_of_messages)
+            all_extracted_answers.extend(extracted_answers)
 
-        print(f"Guess Time taken: {time.time() - guess_time}") """
+        print(all_extracted_answers)
+        answer = select_answer(all_extracted_answers)
+        print(answer)
 
-        if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            df = pd.DataFrame(data)
-            df.to_csv(
-                f"tmp/{str(int(time.time() - start_time)).zfill(5)}.csv", index=False
-            )
-
-        print(answer, "\n\n")
-
-        if answer == -1:
-            answer = 210
-        print(f"Time taken: {time.time() - start_time}")
-        # cutoff_times.pop()
+        print("\n\n")
+        cutoff_times.pop()
+        print(f"Time taken: {time.time() - start}")
         return answer
 
     # Replace this function with your inference code.

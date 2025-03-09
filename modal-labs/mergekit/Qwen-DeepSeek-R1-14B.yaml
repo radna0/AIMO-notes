@@ -1,0 +1,18 @@
+genome:
+  models:
+    - Qwen/Qwen2.5-14B
+    - Qwen/Qwen2.5-14B-Instruct-1M
+    - deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  merge_method: dare_ties
+  base_model: Qwen/Qwen2.5-14B
+  tokenizer_source: null # optional
+  layer_granularity: 8
+
+  # optional:
+  normalize: false
+  allow_negative_weights: false
+  smooth: false
+tasks:
+  - name: gsm8k_cot_zeroshot
+    weight: 1.0 # optional
+    metric: 'acc,none' # defaults to acc,none

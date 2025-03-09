@@ -1,153 +1,94 @@
-import os
-import modal
-import subprocess
-
-import random
-
-id = random.randint(0, 1000000)
-
-cuda_version = "12.4.0"  # should be no greater than host CUDA version
-flavor = "devel"  #  includes full CUDA toolkit
-operating_sys = "ubuntu22.04"
-tag = f"{cuda_version}-{flavor}-{operating_sys}"
-
-app = modal.App(f"eval-{id}-notebook")
-
-
-N_GPU = 1  # tip: for best results, first upgrade to more powerful GPUs, and only then increase GPU count
-
-MINUTES = 60  # seconds
-HOURS = 60 * MINUTES
-
-
-# MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
-
-# Modified Version of AWQ
-# MODEL_NAME = "radna/deepseek-r1-distill-qwen-7b-awq"
-
-MODEL_NAME = "casperhansen/deepseek-r1-distill-qwen-14b-awq"
 HF_TOKEN = "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"
 
 
-# VERY SLOW
-# MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-
-# take in args
-
-EVAL_FILE = "hard_batch_1"
-print(f"Using evaluation file: {EVAL_FILE}")
-
-
-def hf_download():
+def hf_download(model_name):
     from huggingface_hub import hf_hub_download, snapshot_download
 
     deepseek_model = snapshot_download(
-        MODEL_NAME,
-        cache_dir="/cache",
+        model_name,
+        cache_dir="cache/",
         token=HF_TOKEN,
-        force_download=True,
     )
 
 
-vol = modal.Volume.from_name(
-    "hf-hub-cache",
-    create_if_missing=True,
-)
+def main(args):
+    MODEL_NAME = args.model
+    hf_download(MODEL_NAME)
 
+    EVAL_FILE = args.file
+    print(f"Using evaluation file: {EVAL_FILE}")
 
-vllm_image = (
-    modal.Image.from_registry(f"nvidia/cuda:{tag}", add_python="3.12")
-    .apt_install("git", "build-essential", "cmake", "curl", "libcurl4-openssl-dev")
-    .pip_install(
-        "lmdeploy",
-        "torch",
-        "transformers",
-        "pandas",
-        "polars",
-        "numpy",
-        "huggingface_hub[hf_transfer]",
-        "flashinfer-python",
-    )
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "0"})
-    .run_function(
-        hf_download,
-        # persist the HF cache to a Modal Volume so future runs don't re-download models
-        volumes={"/cache": vol},
-    )
-    .run_commands(
-        f"huggingface-cli login --token {HF_TOKEN}",
-    )
-    .add_local_file(f"data/aime/{EVAL_FILE}.csv", remote_path="/root/reference.csv")
-)
-
-
-@app.function(
-    image=vllm_image,
-    gpu=modal.gpu.H100(count=N_GPU),
-    container_idle_timeout=5 * MINUTES,
-    timeout=24 * HOURS,
-    # allow_concurrent_inputs=1000,
-)
-def eval():
+    # copy file from ../data/aime/{EVAL_FILE}.csv to reference.csv
+    import shutil
     import os
 
-    import gc
-    import time
-    import warnings
+    os.makedirs("tmp", exist_ok=True)
+    os.makedirs("evals_res", exist_ok=True)
+    shutil.copy(f"evals/{EVAL_FILE}", "tmp/reference.csv")
 
-    import pandas as pd
-    import polars as pl
-    import numpy as np
+    import os
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["TRITON_PTXAS_PATH"] = "/usr/local/cuda/bin/ptxas"
+    import re
+    import time
+    import random
+    import warnings
+    from collections import Counter
+    import numpy as np, pandas as pd, polars as pl
 
     import torch
-
-    pd.set_option("display.max_colwidth", None)
-    start_time = time.time()
-    """ cutoff_time = start_time + (1 * 60 + 55) * 60
-    cutoff_times = [
-        int(x) for x in np.linspace(cutoff_time, start_time + 20 * 60, 50 + 1)
-    ] """
-
+    import lmdeploy
     from lmdeploy import pipeline, TurbomindEngineConfig, GenerationConfig
+    from transformers import AutoTokenizer
 
     warnings.simplefilter("ignore")
+    print("PyTorch version:", torch.__version__)
+    print("LMDeploy:", lmdeploy.__version__)
+
+    def seed_everything(seed):
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = True
+
+    seed_everything(seed=0)
+
+    start_time = time.time()
+    # cutoff_time = start_time + (1 * 60 + 50) * 60
+    # cutoff_times = [
+    #     int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 50 + 1)
+    # ]
 
     llm_model_pth = MODEL_NAME
 
-    MAX_NUM_SEQS = 32
+    MAX_NUM_SEQS = args.num_seqs
     MAX_MODEL_LEN = 1024 * 12
-
-    FINAL_EVAL_NAME = f"14B_AWQ_DYVE_{MAX_NUM_SEQS}x{MAX_MODEL_LEN}"
-
     EVAL = True
     EVAL_SELECTED_QUESTIONS_ONLY = False
 
     engine_config = TurbomindEngineConfig(
-        quant_policy=4,
-        max_batch_size=MAX_NUM_SEQS,
-        enable_prefix_caching=True,
+        # tp=1,
+        quant_policy=args.quant_policy,
         cache_max_entry_count=0.95,
         session_len=MAX_MODEL_LEN,
+        enable_prefix_caching=True,
+        max_batch_size=MAX_NUM_SEQS,
     )
 
     pipe = pipeline(llm_model_pth, backend_config=engine_config)
 
-    import lmdeploy
-    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_pth, trust_remote_code=False)
 
-    print(lmdeploy.__version__)
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        "radna/deepseek-14b-dyve-awq-triton", trust_remote_code=True
-    )
     import re
 
-    def count_tokens(text: str) -> int:
-        return len(tokenizer.encode(text))
-
-    def extract_boxed_text(text: str) -> str:
-        pattern: str = r"oxed{(.*?)}"
-        matches: list[str] = re.findall(pattern, text)
+    def extract_boxed_text(text):
+        pattern = r"oxed{(.*?)}"
+        matches = re.findall(pattern, text)
         if not matches:
             return ""
         for match in matches[::-1]:
@@ -155,94 +96,103 @@ def eval():
                 return match
         return ""
 
-    from collections import defaultdict
-    import random
+    def batch_message_filter(list_of_messages) -> tuple[list[list[dict]], list[str]]:
+        extracted_answers = []
+        list_of_messages_to_keep = []
+        for messages in list_of_messages:
+            answer = extract_boxed_text(messages[-1]["content"])
+            if answer:
+                extracted_answers.append(answer)
+            else:
+                list_of_messages_to_keep.append(messages)
+        return list_of_messages_to_keep, extracted_answers
 
-    def select_answer(answers: list[str]) -> int:
-        counter: defaultdict[int, float] = defaultdict(float)
+    def select_answer(answers):
+        counter = Counter()
         for answer in answers:
             try:
                 if int(answer) == float(answer):
-                    counter[int(answer)] += (1 + random.random() / 1_000) * 1_000_000
-            except Exception:
+                    counter[int(answer)] += 1 + random.random() / 1_000
+            except:
                 pass
         if not counter:
-            return -1
-        _, answer_result = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
-        return answer_result % 1000
+            return 210
+        _, answer = sorted([(v, k) for k, v in counter.items()], reverse=True)[0]
+        return answer % 1000
 
-    def batch_text_complete(
-        completion_texts: list[str], num_reserved_tokens=0, cur_max_model_len=0
-    ) -> list[str]:
+    def batch_message_generate(list_of_messages) -> list[list[dict]]:
+        max_tokens = args.tokens
+        # if time.time() > cutoff_times[-1]:
+        #     print("Speedrun")
+        #     max_tokens = 1024 * 8
 
-        print(f"Using cur_max_model_len: {cur_max_model_len}")
+        list_of_texts = [
+            tokenizer.apply_chat_template(
+                conversation=messages, tokenize=False, add_generation_prompt=True
+            )
+            for messages in list_of_messages
+        ]
+
         gen_configs = [
             GenerationConfig(
                 do_sample=True,
-                temperature=0.6,  # randomness of the sampling
-                min_p=0.01,
-                skip_special_tokens=True,
-                max_new_tokens=cur_max_model_len
-                - count_tokens(completion_text)
-                - num_reserved_tokens,
-                stop_words=["</think>"],
+                temperature=1.0,  # Randomness of the sampling
+                # top_k=50,
+                top_p=args.top_p,  # Cumulative probability of the top tokens to consider
+                min_p=args.min_p,  # Minimum probability for a token to be considered
+                skip_special_tokens=True,  # Whether to skip special tokens in the output
+                max_new_tokens=max_tokens,  # Maximum number of tokens to generate
+                stop_words=["</think>"],  # List of strings that stop the generation
             )
-            for completion_text in completion_texts
+            for prompt in list_of_texts
         ]
 
         request_output = pipe(
-            completion_texts,
+            list_of_texts,
             gen_config=gen_configs,
         )
+        print(
+            [
+                single_request_output.generate_token_len
+                for single_request_output in request_output
+            ]
+        )
 
-        sort_keys_and_completion_texts: list[tuple[int, str]] = []
-
-        for completion_text, single_request_output in zip(
-            completion_texts, request_output
-        ):
-            completion_text += single_request_output.text
-            sort_keys_and_completion_texts.append(
-                (single_request_output.generate_token_len, completion_text)
+        sort_keys_and_list_of_messages = []
+        for messages, single_request_output in zip(list_of_messages, request_output):
+            # print()
+            # print(single_request_output.outputs[0].text)
+            # print()
+            messages.append(
+                {"role": "assistant", "content": single_request_output.text}
             )
 
-        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
-        sort_keys_and_completion_texts.sort(
-            key=lambda sort_key_and_completion_text: sort_key_and_completion_text[0]
+            sort_keys_and_list_of_messages.append(
+                (single_request_output.generate_token_len, messages)
+            )
+        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
+        sort_keys_and_list_of_messages.sort(
+            key=lambda sort_key_and_messages: sort_key_and_messages[0]
         )
-        print([sort_key for sort_key, _ in sort_keys_and_completion_texts])
+        print([sort_key for sort_key, _ in sort_keys_and_list_of_messages])
 
-        completion_texts = [
-            completion_text for _, completion_text in sort_keys_and_completion_texts
-        ]
+        list_of_messages = [messages for _, messages in sort_keys_and_list_of_messages]
+        return list_of_messages
 
-        return completion_texts
-
-    def create_starter_text(question: str, index: int) -> str:
+    def create_starter_messages(question: str, index: int) -> str:
         options = []
         for _ in range(1):
             options.append(
                 [
                     {
                         "role": "system",
-                        "content": "You are a helpful and harmless math assistant. Please reason step by step. Only work with exact numbers. Only submit an answer if you are sure. After you get your final answer, take modulo 1000, and return the final answer within \\boxed{}.",
+                        "content": "You are a helpful and harmless assistant. You are Qwen developed by Alibaba. You should think step-by-step. Return final answer within \\boxed{}, after taking modulo 1000.",
                     },
                     {"role": "user", "content": question},
                 ]
             )
 
-        starter_text = options[index % len(options)]
-
-        res = tokenizer.apply_chat_template(
-            conversation=starter_text, tokenize=False, add_generation_prompt=True
-        )
-
-        return res
-
-    def create_estimation_prompt(completion_text: str) -> str:
-        return (
-            completion_text
-            + "\n\nOh, I suddenly got the answer to the whole problem, Final Answer: \\boxed{"
-        )
+        return options[index % len(options)]
 
     def predict_for_question(question: str) -> int:
         import os
@@ -250,15 +200,15 @@ def eval():
 
         start_time = time.time()
 
-        # selected_questions_only: bool = True
-        selected_questions_only = False
-        if selected_questions_only and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            # if "circumcircle" not in question:
-            #    return 210
+        if EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv(
+            "KAGGLE_IS_COMPETITION_RERUN"
+        ):
+            # if "Triangle" not in question:
+            #     return 210
             if (
                 "Triangle" not in question
-                and "airline" not in question
-                and "circumcircle" not in question
+                and "delightful" not in question
+                and "George" not in question
             ):
                 return 210
 
@@ -266,61 +216,40 @@ def eval():
             return 210 """
 
         print(question)
-        num_reserved_tokens: int = 40
 
-        cur_max_model_len = 1024 * 12
-        """ if time.time() > cutoff_times[-1]:
-            cur_max_model_len = MAX_MODEL_LEN """
+        num_seqs = MAX_NUM_SEQS
 
-        completion_texts: list[str] = [
-            create_starter_text(question, index) for index in range(MAX_NUM_SEQS)
+        list_of_messages = [
+            create_starter_messages(question, index) for index in range(num_seqs)
         ]
-        print(f"Completion text 0: {completion_texts[0]}")
-        completion_texts: list[str] = batch_text_complete(
-            completion_texts,
-            num_reserved_tokens=num_reserved_tokens,
-            cur_max_model_len=cur_max_model_len,
-        )
-        completion_answers: list[str] = [
-            extract_boxed_text(completion_text) for completion_text in completion_texts
-        ]
-        print(completion_answers)
 
-        answer: int = select_answer(completion_answers)
-        data = {
-            "question": [question] * len(completion_texts),
-            "completion_text": completion_texts,
-            "completion_answer": completion_answers,
-        }
-        """ if time.time() < cutoff_times[-1] and answer == -1:
-            estimation_texts: list[str] = [
-                create_estimation_prompt(completion_text)
-                for completion_text in completion_texts
-            ]
-            estimation_texts: list[str] = batch_text_complete(
-                estimation_texts, num_reserved_tokens=1, cur_max_model_len=cur_max_model_len
-            )
-            estimated_answers: list[str] = [
-                extract_boxed_text(estimation_text)
-                for estimation_text in estimation_texts
-            ]
-            print(estimated_answers)
+        all_extracted_answers = []
+        for _ in range(1):
+            list_of_messages = batch_message_generate(list_of_messages)
 
-            answer = select_answer(estimated_answers)
-            data["estimation_text"] = estimation_texts
-            data["estimated_answer"] = estimated_answers """
+            if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
+                df = pd.DataFrame(
+                    {
+                        "question": [question] * len(list_of_messages),
+                        "message": [
+                            messages[-1]["content"] for messages in list_of_messages
+                        ],
+                    }
+                )
+                df.to_csv(
+                    f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False
+                )
 
-        if not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
-            df = pd.DataFrame(data)
-            df.to_csv(f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False)
+            list_of_messages, extracted_answers = batch_message_filter(list_of_messages)
+            all_extracted_answers.extend(extracted_answers)
 
-        print(answer, "\n\n")
+        print(all_extracted_answers)
+        answer = select_answer(all_extracted_answers)
+        print(answer)
 
-        if answer == -1:
-            answer = 210
-        print(f"Time taken: {time.time() - start_time}")
-
+        print("\n\n")
         # cutoff_times.pop()
+        print(f"Time taken: {time.time() - start}")
         return answer
 
     # Replace this function with your inference code.
@@ -328,7 +257,11 @@ def eval():
     # Each prediction (except the very first) must be returned within 30 minutes of the question being provided.
 
     # Path to the temporary CSV file
-    TEMP_CSV = f"evals_reference_{EVAL_FILE}.csv"
+    import uuid
+
+    uid = str(uuid.uuid4())
+
+    TEMP_CSV = f"tmp/evals_{uid}_{EVAL_FILE}.csv"
 
     def predict(
         id_: pl.DataFrame, question: pl.DataFrame
@@ -358,28 +291,17 @@ def eval():
 
         return pl.DataFrame({"id": id_, "answer": answer})
 
-    predict_for_question(
+    """ predict_for_question(
         "Fred and George take part in a tennis tournament with $4046$ other players. In each round, the players are paired into $2024$ matches. How many ways are there to arrange the first round such that Fred and George do not have to play each other? (Two arrangements for the first round are \\textit{different} if there is a player with a different opponent in the two arrangements.)"
     )
     predict_for_question(
-        "We call a sequence $a_1, a_2, \\ldots$ of non-negative integers \\textit{delightful} if there exists a positive integer $N$ such that for all $n > N$, $a_n = 0$, and for all $i \\geq 1$, $a_i$ counts the number of multiples of $i$ in $a_1, a_2, \\l\\dots, a_N$. How many delightful sequences of non-negative integers are there?"
+        "Triangle $ABC$ has side length $AB = 120$ and circumradius $R = 100$. Let $D$ be the foot of the perpendicular from $C$ to the line $AB$. What is the greatest possible length of segment $CD$?"
     )
-    return
-    predict_for_question(
-        "Let $ABC$ be a triangle with $BC=108$, $CA=126$, and $AB=39$. Point $X$ lies on segment $AC$ such that $BX$ bisects $\\angle CBA$. Let $\\omega$ be the circumcircle of triangle $ABX$. Let $Y$ be a point on $\\omega$ different from $X$ such that $CX=CY$. Line $XY$ meets $BC$ at $E$. The length of the segment $BE$ can be written as $\\frac{m}{n}$, where $m$ and $n$ are coprime positive integers. Find $m+n$."
-    )
-    predict_for_question(
-        "Three airline companies operate flights from Dodola island. Each company has a different schedule of departures. The first company departs every 100 days, the second every 120 days and the third every 150 days. What is the greatest positive integer $d$ for which it is true that there will be $d$ consecutive days without a flight from Dodola island, regardless of the departure times of the various airlines?"
-    )
-    predict_for_question(
-        "For positive integers $x_1,\\ldots, x_n$ define $G(x_1, \\ldots, x_n)$ to be the sum of their $\\frac{n(n-1)}{2}$ pairwise greatest common divisors. We say that an integer $n \\geq 2$ is \\emph{artificial} if there exist $n$ different positive integers $a_1, ..., a_n$ such that \
-\\[a_1 + \\cdots + a_n = G(a_1, \\ldots, a_n) +1.\\] \
-Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
-    )
-    return
 
-    pd.read_csv("reference.csv").drop("answer", axis=1).to_csv(
-        "pure_reference.csv", index=False
+    return """
+
+    pd.read_csv("tmp/reference.csv").drop("answer", axis=1).to_csv(
+        "tmp/pure_reference.csv", index=False
     )
 
     def sample_and_predict(csv_file: str) -> None:
@@ -412,7 +334,7 @@ Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
             # Optionally add a small delay if needed.
             # time.sleep(1)
 
-    sample_and_predict("pure_reference.csv")
+    sample_and_predict("tmp/pure_reference.csv")
 
     # if EVAL and not EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
     if (
@@ -423,7 +345,7 @@ Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
         import pandas as pd
 
         # File paths (adjust if needed)
-        reference_input_path = "reference.csv"
+        reference_input_path = "tmp/reference.csv"
         predictions_path = TEMP_CSV
 
         # Load the CSV files
@@ -472,27 +394,66 @@ Find the sum of all artificial integers $m$ in the range $2 \\leq m \\leq 40$."
         else:
             print("\nAll predictions match the reference!")
 
-        import io
-
-        evals_csv_buffer = io.StringIO()
-        predictions_df.to_csv(evals_csv_buffer, index=False)
-        csv_content = evals_csv_buffer.getvalue()
-        return csv_content.encode("utf-8"), FINAL_EVAL_NAME
+        # save the merged DataFrame to a new CSV file
+        # randomize with uuid
+        merged_df.to_csv(f"evals_res/evals_{uid}_{EVAL_FILE}.csv", index=False)
 
 
-EVALS_DIR = "evals/"
-
-
-@app.local_entrypoint()
-def main():
+if __name__ == "__main__":
+    import argparse
     import time
 
     start = time.time()
-    os.makedirs(EVALS_DIR, exist_ok=True)
-    data, file_postfix = eval.remote()
-    filename = os.path.join(EVALS_DIR, f"aime_{EVAL_FILE}_{file_postfix}_PEP.csv")
-    print(f"Writing to {filename}")
-    with open(filename, "wb") as f:
-        f.write(data)
 
-    print(f"Time taken: {time.time() - start}")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="casperhansen/deepseek-r1-distill-qwen-7b-awq",
+        help="Model to use",
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        default="hard_batch_1",
+        help="Eval File to use",
+    )
+    parser.add_argument(
+        "--num_seqs",
+        type=int,
+        default=48,
+        help="Number of sequences to generate per prompt",
+    )
+    parser.add_argument(
+        "--tokens",
+        type=int,
+        default=1024 * 12,
+        help="Number of sequences to generate per prompt",
+    )
+
+    parser.add_argument(
+        "--quant_policy",
+        type=int,
+        default=8,
+        choices=[8, 4, 0],
+        help="Number of sequences to generate per prompt",
+    )
+
+    parser.add_argument(
+        "--top_p",
+        type=float,
+        default=0.90,
+        help="Number of sequences to generate per prompt",
+    )
+
+    parser.add_argument(
+        "--min_p",
+        type=float,
+        default=0.05,
+        help="Number of sequences to generate per prompt",
+    )
+
+    args = parser.parse_args()
+    main(args)
+
+    print(f"Time Taken: {time.time() - start}")
