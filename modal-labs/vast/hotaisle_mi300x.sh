@@ -34,15 +34,20 @@ git clone https://github.com/ROCm/flash-attention.git
 cd flash-attention
 git checkout b7d29fb
 git submodule update --init
-GPU_ARCHS="gfx942" python3 setup.py install
+MAX_JOBS=104 GPU_ARCHS="gfx942" python3 setup.py install
 cd ..
 
-# Xformers
-pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
+# Xformers Install from source
+git clone https://github.com/ROCm/xformers.git
+cd xformers/
+git submodule update --init --recursive
+PYTORCH_ROCM_ARCH=gfx942 python setup.py install #Instinct MI300-series
 
+# rocm driver may beed to install from scratch to work
 export PYTORCH_ROCM_ARCH="gfx942"
-git clone https://github.com/vllm-project/vllm.git
+git clone https://github.com/ROCm/vllm.git
 cd vllm
+pip install amdsmi
 pip install --upgrade numba scipy huggingface-hub[cli,hf_transfer] setuptools_scm
 pip install "numpy<2"
 pip install -r requirements/rocm.txt
@@ -73,6 +78,26 @@ python3.10 -m pip install -e .
 cd ..
 
 
+# Clone TE repo and submodules
+sudo apt-get install liblzma-dev pkg-config
+export HIP_PATH=/opt/rocm
+export ROCM_PATH=/opt/rocm
+export PATH=$ROCM_PATH/bin:$PATH
+export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
+
+git clone --recursive https://github.com/ROCm/TransformerEngine.git
+
+cd TransformerEngine
+export NVTE_FRAMEWORK=pytorch #optionally set framework, currently only support pytorch and jax; if not set will try to detect installed frameworks
+export NVTE_ROCM_ARCH=gfx942 # CK fused attn only support MI200 and MI300 and fp8 features are only supported on MI300
+
+# Build Platform Selection (optional)
+# Note: Useful when both ROCm and CUDA platforms are present in the Docker
+export NVTE_USE_ROCM=1  #Use 1 for ROCm, or set to 0 to use CUDA; If not set will try to detect installed platform, prioritizing ROCm
+
+pip install .
+
+
 # git clone https://github.com/radna0/open-r1.git
 # cd open-r1
 # GIT_LFS_SKIP_SMUDGE=1 python3.10 -m pip install -e ".[dev]"
@@ -84,7 +109,7 @@ huggingface-cli login --token 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
 wandb login e2ed6858c3226f51a97cdffcb81282ee2164bcec
 
 
-nvcc --version
+amd-smi version
 python3.10 --version
 python3.10 -c "import torch; print(torch.__version__)"
 git-lfs --version

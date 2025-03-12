@@ -1,0 +1,50 @@
+FROM rocm/pytorch-training:v25.4
+
+# Set working directory
+WORKDIR /home/hotaisle/docker_training
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV PYTORCH_ROCM_ARCH="gfx942"
+ENV MAX_JOBS=104
+
+# Install required dependencies
+RUN apt update && apt install -y libstdc++-12-dev && \
+    pip install --upgrade numba scipy huggingface-hub[cli,hf_transfer] setuptools_scm && \
+    pip install amdsmi "numpy<2"
+
+# Clone and install ms-swift
+RUN pip install setuptools -U
+
+# Clone and install vllm
+RUN git clone https://github.com/ROCm/vllm.git && \
+    cd vllm && \
+    pip install -r requirements/rocm.txt && \
+    python3 setup.py develop && \
+    cd ..
+
+RUN pip install git+https://github.com/huggingface/trl.git && \
+    pip install math_verify wandb unsloth_zoo && \
+    pip install --upgrade pillow
+
+RUN git clone https://github.com/sayanmndl21/unsloth.git && \
+    cd unsloth && \
+    pip install .
+
+
+RUN git clone --recurse https://github.com/ROCm/bitsandbytes && \
+    cd bitsandbytes && \
+    git checkout rocm_enabled_multi_backend && \
+    pip install -r requirements-dev.txt && \
+    cmake -DCOMPUTE_BACKEND=hip -S . && \
+    make && \
+    pip install . 
+
+RUN git clone https://github.com/ROCm/xformers.git && \
+    cd xformers && \
+    git submodule update --init --recursive && \
+    python setup.py install 
+
+RUN  huggingface-cli login --token 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 && \
+    wandb login e2ed6858c3226f51a97cdffcb81282ee2164bcec
