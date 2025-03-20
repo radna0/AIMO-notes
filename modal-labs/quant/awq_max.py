@@ -1,8 +1,18 @@
 from awq import AutoAWQForCausalLM
 from transformers import AutoTokenizer
 
-model_path = "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
-quant_path = "r1-14b-awq-max-ptb"
+# take in a model path and quantization args
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--model_path", type=str, default="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+)
+parser.add_argument("--quant_path", type=str, default="r1-14b-awq-max-ptb")
+args = parser.parse_args()
+
+model_path = args.model_path
+quant_path = args.quant_path
 quant_config = {
     "zero_point": True,
     "q_group_size": 128,
@@ -34,9 +44,9 @@ def get_dataset():
 model.quantize(
     tokenizer,
     quant_config=quant_config,
-    # calib_data="neuralmagic/LLM_compression_calibration",
+    calib_data="neuralmagic/LLM_compression_calibration",
     # calib_data=get_dataset(),
-    calib_data="ptb",
+    # calib_data="ptb",
     # max_calib_samples=299,
     max_calib_seq_len=12288,
     # n_parallel_calib_samples=128,

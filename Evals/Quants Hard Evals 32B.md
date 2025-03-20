@@ -3822,4 +3822,175 @@ Incorrect predictions:
 49   2004-I-15  For all positive integers $x$ , let \[f(x)=\be...        511           2
 Time Taken: 6398.510017156601
 
+
+#########################################################################
+
+python eval_turbomind.py --model radna/Fuse-DeepSeek-R1-32B-LIMO-awq-max --file hard_batch_1.csv --num_seqs 5 --tokens 12288 --quant_policy 0 --min_p 0.01
+
+Total predictions compared: 50
+Number of correct predictions: 3
+Accuracy: 6.00%
+
+Incorrect predictions:
+            id                                            problem answer_ref answer_pred
+0   2000-II-14  Every positive integer $k$ has a unique factor...        495         210
+1    2014-II-9  Ten chairs are arranged in a circle. Find the ...        581         210
+2   2001-II-15  Let $EFGH$ , $EFDC$ , and $EHBC$ be three adja...        417         210
+3       1987-6  Rectangle $ABCD$ is divided into four parts of...        193         210
+4    2018-I-15  David found four sticks of different lengths t...         59         210
+5      1998-15  Define a domino to be an ordered pair of disti...        761         760
+6       1993-9  Two thousand points are given on a circle. Lab...        118         210
+8    2001-I-15  The numbers 1, 2, 3, 4, 5, 6, 7, and 8 are ran...         85         210
+9     2008-I-7  Let $S_i$ be the set of all integers $n$ such ...        708         210
+10     2025-11  A piecewise linear periodic function is define...        259         210
+11  2004-II-15  A long thin strip of paper is 1024 units in le...        593         210
+12  2004-II-13  Let $ABCDE$ be a convex pentagon with $AB || C...        484         210
+13   2019-I-15  Let $\overline{AB}$ be a chord of a circle $\o...         65         210
+14   2002-II-4  Patio blocks that are hexagons $1$ unit on a s...        803         210
+15    2021-I-7  Find the number of pairs $(m,n)$ of positive i...         63         210
+16   2019-II-5  Four ambassadors and one advisor for each of t...        520         210
+17  2013-II-11  Let $A = \{1, 2, 3, 4, 5, 6, 7\}$ , and let $N...        399         210
+18  2009-II-15  Let $\overline{MN}$ be a diameter of a circle ...         14         210
+19   2022-I-13  Let $S$ be the set of all rational numbers tha...        392         210
+20   2017-I-13  For every $m \geq 2$ , let $Q(m)$ be the least...         59         210
+21  2019-II-12  For $n\ge1$ call a finite sequence $(a_1,a_2,\...         47         210
+22   2006-I-12  Find the sum of the values of $x$ such that $\...        906         636
+23     2025-14  Let $ABCDE$ be a convex pentagon with $AB=14, ...         60         210
+24   2022-I-14  Given $\triangle ABC$ and a point $P$ on one o...        459         210
+25    2022-I-8  Equilateral triangle $\triangle ABC$ is inscri...        378         210
+26   2023-II-9  Circles $\omega_1$ and $\omega_2$ intersect at...         33         210
+27   2023-I-12  Let $\triangle ABC$ be an equilateral triangle...         75         210
+28  2010-II-10  Find the number of second-degree polynomials $...        163         210
+29     1993-14  A rectangle that is inscribed in a larger rect...        448         210
+31   2024-II-8  Torus $T$ is the surface produced by revolving...        127         210
+32   2021-II-8  An ant makes a sequence of moves on a cube whe...         49         210
+33   2021-II-9  Find the number of ordered pairs $(m, n)$ such...        295         210
+34   2019-I-12  Given $f(z) = z^2-19z$ , there are complex num...        230         210
+35   2013-I-13  Triangle $AB_0C_0$ has side lengths $AB_0 = 12...        961         210
+36  2021-II-11  A teacher was leading a class of four perfectl...        258         210
+37     2025-10  The 27 cells of a $3\times9$ grid are filled i...         81         210
+38    2007-I-6  A frog is placed at the origin on the number l...        169         204
+39  2016-II-14  Equilateral $\triangle ABC$ has side length $6...        450         210
+40  2019-II-14  Find the sum of all positive integers $n$ such...         71         210
+41   2021-I-15  Let $S$ be the set of positive integers $k$ su...        285           9
+42     1990-14  The rectangle $ABCD^{}_{}$ below has dimension...        594         210
+43    2004-I-9  Let $ABC$ be a triangle with sides 3, 4, and 5...         35         210
+44    2023-I-9  Find the number of cubic polynomials $p(x) = x...        738         210
+45  2020-II-12  Let $m$ and $n$ be odd integers greater than $...        248         210
+46   2024-II-5  Let $ABCDEF$ be a convex equilateral hexagon i...         80         210
+48      1992-5  Let $S^{}_{}$ be the set of all rational numbe...        660         210
+49   2004-I-15  For all positive integers $x$ , let \[f(x)=\be...        511           2
+Time Taken: 7580.996570110321
+
+
+python eval_turbomind.py --model radna/Fuse-DeepSeek-R1-32B-LIMO-awq-max --file hard_batch_1.csv --num_seqs 5 --tokens 12288 --quant_policy 0 --min_p 0.05
+
+
+Total predictions compared: 50
+Number of correct predictions: 4
+Accuracy: 8.00%
+
+Incorrect predictions:
+            id                                            problem answer_ref answer_pred
+0   2000-II-14  Every positive integer $k$ has a unique factor...        495         210
+1    2014-II-9  Ten chairs are arranged in a circle. Find the ...        581         210
+2   2001-II-15  Let $EFGH$ , $EFDC$ , and $EHBC$ be three adja...        417         210
+3       1987-6  Rectangle $ABCD$ is divided into four parts of...        193         210
+4    2018-I-15  David found four sticks of different lengths t...         59         210
+6       1993-9  Two thousand points are given on a circle. Lab...        118         210
+8    2001-I-15  The numbers 1, 2, 3, 4, 5, 6, 7, and 8 are ran...         85         210
+9     2008-I-7  Let $S_i$ be the set of all integers $n$ such ...        708         210
+10     2025-11  A piecewise linear periodic function is define...        259         210
+11  2004-II-15  A long thin strip of paper is 1024 units in le...        593         210
+12  2004-II-13  Let $ABCDE$ be a convex pentagon with $AB || C...        484          64
+13   2019-I-15  Let $\overline{AB}$ be a chord of a circle $\o...         65         210
+14   2002-II-4  Patio blocks that are hexagons $1$ unit on a s...        803         210
+15    2021-I-7  Find the number of pairs $(m,n)$ of positive i...         63         210
+16   2019-II-5  Four ambassadors and one advisor for each of t...        520         210
+17  2013-II-11  Let $A = \{1, 2, 3, 4, 5, 6, 7\}$ , and let $N...        399         210
+18  2009-II-15  Let $\overline{MN}$ be a diameter of a circle ...         14         210
+19   2022-I-13  Let $S$ be the set of all rational numbers tha...        392         210
+20   2017-I-13  For every $m \geq 2$ , let $Q(m)$ be the least...         59         210
+21  2019-II-12  For $n\ge1$ call a finite sequence $(a_1,a_2,\...         47         210
+22   2006-I-12  Find the sum of the values of $x$ such that $\...        906         636
+23     2025-14  Let $ABCDE$ be a convex pentagon with $AB=14, ...         60         210
+24   2022-I-14  Given $\triangle ABC$ and a point $P$ on one o...        459         210
+25    2022-I-8  Equilateral triangle $\triangle ABC$ is inscri...        378         210
+26   2023-II-9  Circles $\omega_1$ and $\omega_2$ intersect at...         33         210
+27   2023-I-12  Let $\triangle ABC$ be an equilateral triangle...         75         210
+29     1993-14  A rectangle that is inscribed in a larger rect...        448         210
+30   2000-I-12  Given a function $f$ for which \[f(x) = f(398 ...        177          45
+31   2024-II-8  Torus $T$ is the surface produced by revolving...        127         210
+32   2021-II-8  An ant makes a sequence of moves on a cube whe...         49         210
+33   2021-II-9  Find the number of ordered pairs $(m, n)$ such...        295         210
+34   2019-I-12  Given $f(z) = z^2-19z$ , there are complex num...        230         210
+35   2013-I-13  Triangle $AB_0C_0$ has side lengths $AB_0 = 12...        961         210
+36  2021-II-11  A teacher was leading a class of four perfectl...        258         210
+37     2025-10  The 27 cells of a $3\times9$ grid are filled i...         81         210
+38    2007-I-6  A frog is placed at the origin on the number l...        169         210
+39  2016-II-14  Equilateral $\triangle ABC$ has side length $6...        450         210
+40  2019-II-14  Find the sum of all positive integers $n$ such...         71         210
+41   2021-I-15  Let $S$ be the set of positive integers $k$ su...        285           9
+43    2004-I-9  Let $ABC$ be a triangle with sides 3, 4, and 5...         35         210
+44    2023-I-9  Find the number of cubic polynomials $p(x) = x...        738         328
+45  2020-II-12  Let $m$ and $n$ be odd integers greater than $...        248         210
+46   2024-II-5  Let $ABCDEF$ be a convex equilateral hexagon i...         80         210
+47   2012-II-4  Ana, Bob, and Cao bike at constant rates of $8...         61         210
+48      1992-5  Let $S^{}_{}$ be the set of all rational numbe...        660         210
+49   2004-I-15  For all positive integers $x$ , let \[f(x)=\be...        511         210
+Time Taken: 7534.091336727142
+
+
+python eval_turbomind.py --model radna/Fuse-DeepSeek-R1-32B-LIMO-awq-max --file hard_batch_1.csv --num_seqs 5 --tokens 12288 --quant_policy 0 --min_p 0.10
+
+Total predictions compared: 50
+Number of correct predictions: 8
+Accuracy: 16.00%
+
+Incorrect predictions:
+            id                                            problem answer_ref answer_pred
+0   2000-II-14  Every positive integer $k$ has a unique factor...        495         210
+1    2014-II-9  Ten chairs are arranged in a circle. Find the ...        581         210
+2   2001-II-15  Let $EFGH$ , $EFDC$ , and $EHBC$ be three adja...        417         210
+3       1987-6  Rectangle $ABCD$ is divided into four parts of...        193         210
+4    2018-I-15  David found four sticks of different lengths t...         59         210
+5      1998-15  Define a domino to be an ordered pair of disti...        761         210
+6       1993-9  Two thousand points are given on a circle. Lab...        118         210
+8    2001-I-15  The numbers 1, 2, 3, 4, 5, 6, 7, and 8 are ran...         85         210
+9     2008-I-7  Let $S_i$ be the set of all integers $n$ such ...        708         210
+10     2025-11  A piecewise linear periodic function is define...        259         210
+11  2004-II-15  A long thin strip of paper is 1024 units in le...        593         210
+12  2004-II-13  Let $ABCDE$ be a convex pentagon with $AB || C...        484         210
+14   2002-II-4  Patio blocks that are hexagons $1$ unit on a s...        803         210
+15    2021-I-7  Find the number of pairs $(m,n)$ of positive i...         63         210
+16   2019-II-5  Four ambassadors and one advisor for each of t...        520         210
+17  2013-II-11  Let $A = \{1, 2, 3, 4, 5, 6, 7\}$ , and let $N...        399         210
+18  2009-II-15  Let $\overline{MN}$ be a diameter of a circle ...         14         210
+19   2022-I-13  Let $S$ be the set of all rational numbers tha...        392         210
+20   2017-I-13  For every $m \geq 2$ , let $Q(m)$ be the least...         59         210
+21  2019-II-12  For $n\ge1$ call a finite sequence $(a_1,a_2,\...         47         210
+23     2025-14  Let $ABCDE$ be a convex pentagon with $AB=14, ...         60         210
+24   2022-I-14  Given $\triangle ABC$ and a point $P$ on one o...        459         210
+25    2022-I-8  Equilateral triangle $\triangle ABC$ is inscri...        378         210
+26   2023-II-9  Circles $\omega_1$ and $\omega_2$ intersect at...         33         210
+29     1993-14  A rectangle that is inscribed in a larger rect...        448         210
+31   2024-II-8  Torus $T$ is the surface produced by revolving...        127         210
+32   2021-II-8  An ant makes a sequence of moves on a cube whe...         49         210
+33   2021-II-9  Find the number of ordered pairs $(m, n)$ such...        295         210
+35   2013-I-13  Triangle $AB_0C_0$ has side lengths $AB_0 = 12...        961         210
+36  2021-II-11  A teacher was leading a class of four perfectl...        258         210
+37     2025-10  The 27 cells of a $3\times9$ grid are filled i...         81         210
+38    2007-I-6  A frog is placed at the origin on the number l...        169         204
+39  2016-II-14  Equilateral $\triangle ABC$ has side length $6...        450         210
+40  2019-II-14  Find the sum of all positive integers $n$ such...         71         210
+41   2021-I-15  Let $S$ be the set of positive integers $k$ su...        285         210
+42     1990-14  The rectangle $ABCD^{}_{}$ below has dimension...        594         210
+43    2004-I-9  Let $ABC$ be a triangle with sides 3, 4, and 5...         35         210
+44    2023-I-9  Find the number of cubic polynomials $p(x) = x...        738         328
+45  2020-II-12  Let $m$ and $n$ be odd integers greater than $...        248         210
+46   2024-II-5  Let $ABCDEF$ be a convex equilateral hexagon i...         80         210
+48      1992-5  Let $S^{}_{}$ be the set of all rational numbe...        660         210
+49   2004-I-15  For all positive integers $x$ , let \[f(x)=\be...        511           2
+Time Taken: 7515.309421539307
+
 ```

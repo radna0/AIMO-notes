@@ -21,7 +21,9 @@ pip3 install --pre torch torchvision torchaudio --index-url https://download.pyt
 
 
 python3 -m pip install ninja cmake wheel pybind11
-pip uninstall -y triton
+pip uninstall -y triton flash_attn vllm
+
+
 git clone https://github.com/ROCm/triton
 cd triton
 cd python
@@ -43,7 +45,7 @@ cd xformers/
 git submodule update --init --recursive
 PYTORCH_ROCM_ARCH=gfx942 python setup.py install #Instinct MI300-series
 
-# rocm driver may beed to install from scratch to work
+# rocm driver may need to install from scratch to work
 export PYTORCH_ROCM_ARCH="gfx942"
 git clone https://github.com/ROCm/vllm.git
 cd vllm

@@ -240,4 +240,33 @@ lm_eval  --model vllm  --model_args pretrained=radna/NEW-Fuse-32B-ALL-awq-max,ad
 |--------------|------:|------|------|-----------|---|-----:|---|-----:|
 |hendrycks_math|      1|none  |      |exact_match|↑  |0.3636|±  |0.0067|
 
+
+#########################################################################
+
+
+lm_eval  --model vllm  --model_args pretrained=radna/Fuse-DeepSeek-R1-32B-LIMO-awq-max  --tasks gsm8k,asdiv,hendrycks_math,mathqa --batch_size auto --trust_remote_code --num_fewshot 10
+
+|                Tasks                 |Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|--------------------------------------|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|asdiv                                 |      1|none            |    10|acc        |↑  |0.0000|±  |0.0000|
+|gsm8k                                 |      3|flexible-extract|    10|exact_match|↑  |0.8969|±  |0.0084|
+|                                      |       |strict-match    |    10|exact_match|↑  |0.8810|±  |0.0089|
+|hendrycks_math                        |      1|none            |      |exact_match|↑  |0.2640|±  |0.0061|
+| - hendrycks_math_algebra             |      1|none            |    10|exact_match|↑  |0.2730|±  |0.0129|
+| - hendrycks_math_counting_and_prob   |      1|none            |    10|exact_match|↑  |0.2215|±  |0.0191|
+| - hendrycks_math_geometry            |      1|none            |    10|exact_match|↑  |0.2401|±  |0.0195|
+| - hendrycks_math_intermediate_algebra|      1|none            |    10|exact_match|↑  |0.1960|±  |0.0132|
+| - hendrycks_math_num_theory          |      1|none            |    10|exact_match|↑  |0.1944|±  |0.0170|
+| - hendrycks_math_prealgebra          |      1|none            |    10|exact_match|↑  |0.4202|±  |0.0167|
+| - hendrycks_math_precalc             |      1|none            |    10|exact_match|↑  |0.2344|±  |0.0181|
+|mathqa                                |      1|none            |    10|acc        |↑  |0.5628|±  |0.0091|
+|                                      |       |none            |    10|acc_norm   |↑  |0.5695|±  |0.0091|
+
+|    Groups    |Version|Filter|n-shot|  Metric   |   |Value|   |Stderr|
+|--------------|------:|------|------|-----------|---|----:|---|-----:|
+|hendrycks_math|      1|none  |      |exact_match|↑  |0.264|±  |0.0061|
+
+
+
+
 ```
