@@ -21,10 +21,16 @@ def main(args):
     # copy file from ../data/aime/{EVAL_FILE}.csv to reference.csv
     import shutil
     import os
+    import time
+
+    start_time = time.time()
 
     os.makedirs("tmp", exist_ok=True)
     os.makedirs("evals_res", exist_ok=True)
-    shutil.copy(f"evals/{EVAL_FILE}", "tmp/reference.csv")
+
+    # get base path for eval_file
+    EVAL_FILE_BASENAME = os.path.basename(EVAL_FILE)
+    SAVED_EVAL_FILE = f"{str(start_time)}_{args.model}_{EVAL_FILE_BASENAME}_seq{args.num_seqs}_tok{args.tokens}_q{args.quant_policy}_tpp{args.top_p}_mnp{args.min_p}_tpk{args.top_k}"
 
     import os
 
@@ -32,7 +38,6 @@ def main(args):
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ["TRITON_PTXAS_PATH"] = "/usr/local/cuda/bin/ptxas"
     import re
-    import time
     import random
     import warnings
     from collections import Counter
@@ -58,7 +63,6 @@ def main(args):
 
     seed_everything(seed=0)
 
-    start_time = time.time()
     # cutoff_time = start_time + (1 * 60 + 50) * 60
     # cutoff_times = [
     #     int(x) for x in np.linspace(cutoff_time, start_time + 10 * 60, 50 + 1)
@@ -194,7 +198,7 @@ def main(args):
 
         return options[index % len(options)]
 
-    def predict_for_question(question: str) -> int:
+    def predict_for_question(question: str, question_id=time.time()) -> int:
         import os
         import time
 
@@ -236,9 +240,7 @@ def main(args):
                         ],
                     }
                 )
-                df.to_csv(
-                    f"{str(int(time.time() - start_time)).zfill(5)}.csv", index=False
-                )
+                df.to_csv(f"tmp/{str(question_id)}_{SAVED_EVAL_FILE}.csv", index=False)
 
             list_of_messages, extracted_answers = batch_message_filter(list_of_messages)
             all_extracted_answers.extend(extracted_answers)
@@ -249,7 +251,7 @@ def main(args):
 
         print("\n\n")
         # cutoff_times.pop()
-        print(f"Time taken: {time.time() - start}")
+        print(f"Time taken: {time.time() - start_time}")
         return answer
 
     # Replace this function with your inference code.
@@ -259,9 +261,7 @@ def main(args):
     # Path to the temporary CSV file
     import uuid
 
-    uid = str(uuid.uuid4())
-
-    TEMP_CSV = f"tmp/evals_{uid}_{EVAL_FILE}.csv"
+    TEMP_CSV = f"tmp/evals_{SAVED_EVAL_FILE}.csv"
 
     def predict(
         id_: pl.DataFrame, question: pl.DataFrame
@@ -271,7 +271,7 @@ def main(args):
         print(id_)
 
         question = question["problem"][0]
-        answer = predict_for_question(question)
+        answer = predict_for_question(question, question_id=id_)
         print(question)
         print("------\n\n\n")
 
@@ -299,10 +299,6 @@ def main(args):
     )
 
     return """
-
-    pd.read_csv("tmp/reference.csv").drop("answer", axis=1).to_csv(
-        "tmp/pure_reference.csv", index=False
-    )
 
     def sample_and_predict(csv_file: str) -> None:
         """
@@ -334,7 +330,7 @@ def main(args):
             # Optionally add a small delay if needed.
             # time.sleep(1)
 
-    sample_and_predict("tmp/pure_reference.csv")
+    sample_and_predict(EVAL_FILE)
 
     # if EVAL and not EVAL_SELECTED_QUESTIONS_ONLY and not os.getenv('KAGGLE_IS_COMPETITION_RERUN'):
     if (
@@ -381,22 +377,33 @@ def main(args):
         correct = merged_df["is_correct"].sum()
         accuracy = correct / total
 
-        print(f"Total predictions compared: {total}")
-        print(f"Number of correct predictions: {correct}")
-        print(f"Accuracy: {accuracy:.2%}")
+        std_outputs = ""
+        std_outputs = std_outputs + f"Total predictions compared: {total}" + "\n"
+        std_outputs = std_outputs + f"Number of correct predictions: {correct}" + "\n"
+        std_outputs = std_outputs + f"Accuracy: {accuracy:.2%}" + "\n"
 
         # Optionally, list the rows where the prediction did not match the reference.
         incorrect_df = merged_df[~merged_df["is_correct"]]
         if not incorrect_df.empty:
-            print("\nIncorrect predictions:")
+            std_outputs = std_outputs + "\nIncorrect predictions:" + "\n"
             # Adjust the columns below if your CSVs have different column names.
-            print(incorrect_df[["id", "problem", "answer_ref", "answer_pred"]])
+            std_outputs = (
+                std_outputs
+                + incorrect_df[["id", "problem", "answer_ref", "answer_pred"]]
+                + "\n"
+            )
         else:
-            print("\nAll predictions match the reference!")
+            std_outputs = std_outputs + "\nAll predictions match the reference!" + "\n"
+
+        # write stdoutputs to evals_res/outputs_{SAVED_EVAL_FILE}.log
+
+        # write stdoutputs to evals_res/outputs_{SAVED_EVAL_FILE}.log
+        with open(f"evals_res/outputs_{SAVED_EVAL_FILE}.log", "w") as f:
+            f.write(std_outputs)
 
         # save the merged DataFrame to a new CSV file
         # randomize with uuid
-        merged_df.to_csv(f"evals_res/evals_{uid}_{EVAL_FILE}.csv", index=False)
+        merged_df.to_csv(f"evals_res/evals_{SAVED_EVAL_FILE}.csv", index=False)
 
 
 if __name__ == "__main__":

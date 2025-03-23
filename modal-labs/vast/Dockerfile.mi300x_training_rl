@@ -1,0 +1,40 @@
+FROM rocm/vllm:rocm6.3.1_instinct_vllm0.7.3_20250311
+
+# Set working directory
+WORKDIR /mnt/nvme5n1p1
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV PYTORCH_ROCM_ARCH="gfx942"
+ENV MAX_JOBS=104
+
+# Install required dependencies
+RUN apt update && apt install -y libstdc++-12-dev && \
+    pip install --upgrade numba scipy huggingface-hub[cli,hf_transfer] setuptools_scm && \
+    pip install amdsmi "numpy<2"
+
+
+# Clone and install ms-swift
+RUN git clone https://github.com/radna0/ms-swift.git && \
+    cd ms-swift && \
+    git pull && \
+    pip install . && \ 
+    pip install setuptools -U && \
+    cd ..
+
+
+RUN pip install git+https://github.com/huggingface/trl.git && \
+    pip install math-verify==0.5.2 hf_transfer wandb && \
+    pip uninstall setuptools -y && \
+    pip install deepspeed -U && \
+    pip install setuptools -U && \
+    pip install --upgrade pillow
+
+# RUN apt install unzip -y && \
+#     wget -O quark.zip https://www.xilinx.com/bin/public/openDownload?filename=quark-0.6.0.zip && \
+#     unzip quark.zip && \
+#     cd quark-0.6.0+dba9ca364 && pip install quark-0.6.0+dba9ca364-py3-none-any.whl
+
+RUN  huggingface-cli login --token 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 && \
+    wandb login e2ed6858c3226f51a97cdffcb81282ee2164bcec
