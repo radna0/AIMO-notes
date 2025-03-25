@@ -30,7 +30,8 @@ def main(args):
 
     # get base path for eval_file
     EVAL_FILE_BASENAME = os.path.basename(EVAL_FILE)
-    SAVED_EVAL_FILE = f"{str(start_time)}_{args.model}_{EVAL_FILE_BASENAME}_seq{args.num_seqs}_tok{args.tokens}_q{args.quant_policy}_tpp{args.top_p}_mnp{args.min_p}_tpk{args.top_k}"
+    MODEL_NAME_STR = "+".join(args.model.split("/"))
+    SAVED_EVAL_FILE = f"{str(start_time)}_{MODEL_NAME_STR}_{EVAL_FILE_BASENAME}_seq{args.num_seqs}_tok{args.tokens}_q{args.quant_policy}_tpp{args.top_p}_mnp{args.min_p}_tpk{args.top_k}"
 
     import os
 
@@ -272,7 +273,6 @@ def main(args):
 
         question = question["problem"][0]
         answer = predict_for_question(question, question_id=id_)
-        print(question)
         print("------\n\n\n")
 
         if EVAL and not os.getenv("KAGGLE_IS_COMPETITION_RERUN"):
@@ -341,7 +341,7 @@ def main(args):
         import pandas as pd
 
         # File paths (adjust if needed)
-        reference_input_path = "tmp/reference.csv"
+        reference_input_path = EVAL_FILE
         predictions_path = TEMP_CSV
 
         # Load the CSV files
@@ -389,11 +389,13 @@ def main(args):
             # Adjust the columns below if your CSVs have different column names.
             std_outputs = (
                 std_outputs
-                + incorrect_df[["id", "problem", "answer_ref", "answer_pred"]]
+                + str(incorrect_df[["id", "problem", "answer_ref", "answer_pred"]])
                 + "\n"
             )
         else:
             std_outputs = std_outputs + "\nAll predictions match the reference!" + "\n"
+
+        print(std_outputs)
 
         # write stdoutputs to evals_res/outputs_{SAVED_EVAL_FILE}.log
 

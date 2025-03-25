@@ -40,14 +40,29 @@ def get_dataset():
     return texts
 
 
+def map_tokenizer(example):
+    text = example["text"]
+    inputs = tokenizer.encode(text)
+    return {"text_token_length": len(inputs)}
+
+
+def get_long_dataset():
+    from datasets import load_dataset
+
+    data = load_dataset("mit-han-lab/pile-val-backup", split="validation")
+    data = data.map(map_tokenizer, num_proc=64)
+    data = data.filter(lambda x: x["text_token_length"] >= 8192)
+    return [text for text in data["text"]]
+
+
 # Quantize
 model.quantize(
     tokenizer,
     quant_config=quant_config,
-    calib_data="neuralmagic/LLM_compression_calibration",
-    # calib_data=get_dataset(),
+    # calib_data="neuralmagic/LLM_compression_calibration",
+    calib_data=get_long_dataset(),
     # calib_data="ptb",
-    # max_calib_samples=299,
+    max_calib_samples=128,
     max_calib_seq_len=12288,
     # n_parallel_calib_samples=128,
 )
